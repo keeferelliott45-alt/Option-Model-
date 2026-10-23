@@ -7,5 +7,5 @@ build/
 dist/
 
 # Cached market data is large and re-fetchable; reports are committed instead.
-data/
-!data/.gitkeep
+/data/
+!/data/.gitkeep
