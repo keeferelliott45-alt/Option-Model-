@@ -65,6 +65,15 @@ def _snapshot_options(args: argparse.Namespace) -> int:
 
 
 def _phase1(args: argparse.Namespace) -> int:
+    prov = phase1.provenance()
+    if prov["git_status"] != "clean":
+        files = ", ".join(prov["uncommitted"][:10])
+        msg = (f"phase1: docs/PREREGISTRATION.md and the code are not committed (git: {prov['git_status']}"
+               + (f"; uncommitted: {files}" if files else "") + "), so the pre-registration is not tamper-evident.")
+        if not args.allow_dirty:
+            print(msg + " Commit them first, or pass --allow-dirty (the report will be flagged).", file=sys.stderr)
+            return 3
+        print(msg + " Running anyway (--allow-dirty); the report is flagged.", file=sys.stderr)
     res = phase1.run(news=not args.no_news, refresh=args.refresh)
     print(f"phase1 verdict: {res['verdict']}")
     for c in res["criteria"]:
@@ -110,6 +119,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("phase1", help="Run the pre-registered Phase 1 event study and write the report.")
     p.add_argument("--no-news", action="store_true", help="Skip the SEC 8-K confirming signal.")
     p.add_argument("--refresh", action="store_true", help="Refetch all source data first.")
+    p.add_argument("--allow-dirty", action="store_true",
+                   help="Run even if the pre-registration or code is uncommitted (the report is flagged).")
     p.set_defaults(func=_phase1)
 
     p = sub.add_parser("params", help="Regenerate docs/PARAMETERS.md from the parameter registry.")

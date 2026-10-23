@@ -22,19 +22,44 @@ def _pick(frame: pd.DataFrame, dates: pd.DatetimeIndex, tickers: np.ndarray) -> 
 
 
 def _eligible(panel: Panel, dec: Decomposition, tickers: list[str], ev_pos: np.ndarray, ev_col: np.ndarray,
-              window: int) -> np.ndarray:
+              window: int, min_price: float) -> np.ndarray:
     dates = panel.dates
     member = panel.member.reindex(index=dates, columns=tickers)
     ok = member.eq(True).to_numpy()
     for f in (dec.z, dec.sigma, dec.beta_mkt, dec.beta_sec):
         ok &= np.isfinite(f.reindex(index=dates, columns=tickers).to_numpy(dtype=float))
+    price = panel.raw_close if panel.raw_close is not None else panel.close
+    ok &= price.reindex(index=dates, columns=tickers).to_numpy(dtype=float) >= min_price  # same filter as events
     ok[: ev_pos.min()] = False
     ok[ev_pos.max() + 1:] = False
-    # Difference array -> cumsum marks every position within `window` of any real event of that ticker.
+    # Exclude each real event day and its own forward window [e, e + window]: past events only. Excluding days
+    # BEFORE an event would keep only placebo windows with no future drop in them, which is lookahead.
     marks = np.zeros((len(dates) + 1, len(tickers)), dtype=np.int64)
-    np.add.at(marks, (np.clip(ev_pos - window, 0, None), ev_col), 1)
+    np.add.at(marks, (ev_pos, ev_col), 1)
     np.add.at(marks, (np.minimum(ev_pos + window + 1, len(dates)), ev_col), -1)
     return ok & ~(np.cumsum(marks, axis=0)[:-1] > 0)
+
+
+def _inputs(events: pd.DataFrame, dates: pd.DatetimeIndex) -> tuple[np.ndarray, list[str], np.ndarray]:
+    ev_pos = dates.get_indexer(pd.DatetimeIndex(pd.to_datetime(events["date"])))
+    if (ev_pos < 0).any():
+        raise ValueError("event dates missing from panel.dates")
+    tickers = sorted(events["ticker"].unique())
+    return ev_pos, tickers, pd.Index(tickers).get_indexer(events["ticker"])
+
+
+def eligible_days(events: pd.DataFrame, panel: Panel, dec: Decomposition, exclude_window: int | None = None,
+                  min_price: float | None = None) -> pd.DataFrame:
+    """Bool frame (panel.dates x event tickers) of the days placebo_events may draw from."""
+    window = params.EVENT_COOLDOWN if exclude_window is None else exclude_window
+    min_price = params.MIN_PRICE if min_price is None else min_price
+    if window < 0:
+        raise ValueError("exclude_window must be non-negative")
+    ev_pos, tickers, ev_col = _inputs(events, panel.dates)
+    if not len(events):
+        return pd.DataFrame(False, index=panel.dates, columns=pd.Index(tickers, dtype=object))
+    ok = _eligible(panel, dec, tickers, ev_pos, ev_col, window, min_price)
+    return pd.DataFrame(ok, index=panel.dates, columns=pd.Index(tickers, dtype=object))
 
 
 def _draw(rng: np.random.Generator, cand: np.ndarray, need: int) -> np.ndarray:
@@ -46,23 +71,20 @@ def _draw(rng: np.random.Generator, cand: np.ndarray, need: int) -> np.ndarray:
 
 
 def placebo_events(events: pd.DataFrame, panel: Panel, dec: Decomposition, n_per_event: int = 1,
-                   seed: int | None = None, exclude_window: int | None = None) -> pd.DataFrame:
+                   seed: int | None = None, exclude_window: int | None = None, *,
+                   min_price: float | None = None) -> pd.DataFrame:
     seed = params.RANDOM_SEED if seed is None else seed
     window = params.EVENT_COOLDOWN if exclude_window is None else exclude_window
+    min_price = params.MIN_PRICE if min_price is None else min_price
     if n_per_event < 0 or window < 0:
         raise ValueError("n_per_event and exclude_window must be non-negative")
     dates = panel.dates
     rng = np.random.default_rng(seed)
-
-    ev_pos = dates.get_indexer(pd.DatetimeIndex(pd.to_datetime(events["date"])))
-    if (ev_pos < 0).any():
-        raise ValueError("event dates missing from panel.dates")
-    tickers = sorted(events["ticker"].unique())
-    ev_col = pd.Index(tickers).get_indexer(events["ticker"])
+    ev_pos, tickers, ev_col = _inputs(events, dates)
 
     rows, cols, srcs = [], [], []
     if len(events) and n_per_event:
-        ok = _eligible(panel, dec, tickers, ev_pos, ev_col, window)
+        ok = _eligible(panel, dec, tickers, ev_pos, ev_col, window, min_price)
         # Canonical order (ticker, date, input row) so the draw does not depend on how events were sorted.
         order = np.lexsort((np.arange(len(events)), ev_pos, ev_col))
         bounds = np.searchsorted(ev_col[order], np.arange(len(tickers) + 1))

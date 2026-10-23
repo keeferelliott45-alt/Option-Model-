@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import dataclasses
 import datetime as _dt
 import hashlib
 import importlib
 import json
 import math
 import pkgutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -31,8 +33,39 @@ STABILITY_MIN_SUBPERIODS = params.register(
 FACTOR_N_BUCKETS = params.register(
     "FACTOR_N_BUCKETS", 3, "convention", "backtest",
     "Terciles for one-factor-at-a-time tests: two cut points, the fewest that still separate high from low.")
+STALE_OPEN_RULE = params.register(
+    "STALE_OPEN_RULE", "volume[t+1] == 0 or as-traded open[t+1] == close[t]", "convention", "backtest",
+    "An entry print that is not a real t+1 opening trade (no volume, or a free-data open copied from the prior "
+    "close, ~10-15% of post-drop S&P bars before 2008 vs ~1-2% after) is missing data, not a fill; using it would "
+    "silently turn the pre-registered next-open entry into a close entry, which favours H1.")
 
-ENTRY = "next_open"  # PREREGISTRATION.md H1 fixes the t+1 open; 'close' is only the secondary bounce check
+PROVENANCE_PATHS = ("docs/PREREGISTRATION.md", "src", "pyproject.toml")
+_H = params.PRIMARY_HORIZON
+# Decisions made in code that PREREGISTRATION.md does not spell out; fixed before any real-data result.
+READINGS = (
+    f"Criterion 3 is judged on the placebo's abnormal {_H}d return BEFORE the fixed {2 * params.COST_BPS_PER_SIDE:g} "
+    "bp round-trip cost (a constant cost would push any clean placebo below zero).",
+    f"'Date-clustered' CIs resample calendar-month clusters ({stats.CLUSTER_FREQ}), "
+    f"{params.BOOTSTRAP_REPS} percentile-bootstrap replications.",
+    f"Walk-forward: on each fit window the threshold with the highest i.i.d. t-score among those with >= "
+    f"{params.MIN_SAMPLE_FINDING} purged fit events is chosen; a window where none qualifies adds no test events. "
+    f"Purged = the fit event's {_H}d exit date falls before the test window opens.",
+    f"Same-ticker events within {params.EVENT_COOLDOWN} trading days of the last kept event are suppressed.",
+    f"Criterion 4: at least {STABILITY_MIN_SUBPERIODS} of the {len(SUBPERIODS)} sub-periods have a positive mean; "
+    "a sub-period with no events counts as not positive.",
+    f"Criteria 1, 1b and 2 also require n >= {params.MIN_SAMPLE_FINDING} and >= {stats.MIN_EFFECTIVE_CLUSTERS} "
+    "effective month clusters: a low-confidence estimate never passes.",
+    f"Placebo: the same tickers, one draw per event, from member days with finite model inputs and as-traded price "
+    f">= ${params.MIN_PRICE:g}, inside the events' date span, excluding each real event day and the "
+    f"{params.EVENT_COOLDOWN} days after it. Days BEFORE an event are not excluded: that would keep only placebo "
+    "windows with no future drop in them (lookahead).",
+    f"Entries that are not real t+1 opens are missing data ({STALE_OPEN_RULE}), for events and placebo alike; "
+    "they are counted by year and the unfiltered mean is reported as a sensitivity row.",
+    "Events or placebo days whose stock or ETF price is missing at entry or exit are excluded from every mean and "
+    "counted; they are never booked as losses or gains.",
+    f"Placebo drift diagnostic (placebo abnormal return minus {_H} x the ticker's mean daily abnormal return over "
+    "the development window) is reported only. It does not change criterion 3 or the run's validity.",
+)
 # Thesis-predicted sign of top-minus-bottom for each confirming signal (documentation for the report only).
 FACTOR_EXPECTATION = {
     "vol_z": ("+", "high-volume drops overreact more"),
@@ -95,8 +128,51 @@ def jsonable(x: Any) -> Any:
     return x
 
 
+def _normalized(path: Path) -> bytes:
+    # A CRLF checkout (git core.autocrlf) must hash the same as the committed LF text.
+    return path.read_bytes().replace(b"\r\n", b"\n")
+
+
 def _sha256(path: Path) -> str | None:
-    return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+    return hashlib.sha256(_normalized(path)).hexdigest() if path.exists() else None
+
+
+def _text_sha256(lines: tuple[str, ...]) -> str:
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+
+
+def _code_sha256(root: Path) -> str | None:
+    files = sorted((root / "src" / "omodel").rglob("*.py"))
+    if not files:
+        return None
+    h = hashlib.sha256()
+    for f in files:
+        h.update(f.relative_to(root).as_posix().encode("utf-8") + b"\0" + _normalized(f) + b"\0")
+    return h.hexdigest()
+
+
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, timeout=60)
+
+
+def provenance(root: Path | None = None) -> dict:
+    """Code fingerprint plus git HEAD and whether the pre-registration, code or pyproject are uncommitted."""
+    root = settings().root if root is None else Path(root)
+    out: dict[str, Any] = {"code_sha256": _code_sha256(root), "git_head": None, "git_status": "unknown",
+                           "uncommitted": []}
+    try:
+        status = _git(root, "status", "--porcelain", "--untracked-files=all", "--", *PROVENANCE_PATHS)
+        head = _git(root, "rev-parse", "--verify", "HEAD")
+    except (OSError, subprocess.SubprocessError) as exc:
+        out["git_status"] = f"unknown ({type(exc).__name__}: {exc})"
+        return out
+    if status.returncode != 0:
+        out["git_status"] = f"unknown ({(status.stderr or '').strip()[:200] or 'git status failed'})"
+        return out
+    out["git_head"] = head.stdout.strip() if head.returncode == 0 and head.stdout.strip() else None
+    out["uncommitted"] = [ln[3:] for ln in status.stdout.splitlines() if ln.strip()]
+    out["git_status"] = "clean" if out["git_head"] and not out["uncommitted"] else "dirty"
+    return out
 
 
 def _summ(values: pd.Series, dates: pd.Series, label: str, **extra: Any) -> dict:
@@ -118,6 +194,20 @@ def _at(frame: pd.DataFrame, events: pd.DataFrame) -> np.ndarray:
     ok = (r >= 0) & (c >= 0)
     out[ok] = frame.to_numpy(dtype=float)[r[ok], c[ok]]
     return out
+
+
+def stale_opens(panel: Panel) -> pd.DataFrame:
+    """True where that row's open is not a real opening trade (STALE_OPEN_RULE)."""
+    close = panel.close
+    raw = panel.raw_close.reindex_like(close) if panel.raw_close is not None else close
+    raw_open = (panel.open.reindex_like(close) * raw / close).to_numpy(dtype=float)  # as-traded open
+    copied = np.isclose(raw_open, raw.shift(1).to_numpy(dtype=float), rtol=1e-9, atol=0.0)
+    no_trade = panel.volume.reindex_like(close).to_numpy(dtype=float) == 0
+    return pd.DataFrame(copied | no_trade, index=close.index, columns=close.columns)
+
+
+def _stale_entry(events: pd.DataFrame, stale: pd.DataFrame) -> np.ndarray:
+    return np.nan_to_num(_at(stale.shift(-1, fill_value=False).astype(float), events)) > 0
 
 
 def _coverage(panel: Panel, membership: pd.DataFrame | None) -> tuple[pd.DataFrame | None, str]:
@@ -153,15 +243,45 @@ def _horizon_table(events: pd.DataFrame, kinds: tuple[str, ...], label: str) -> 
             for h in params.HORIZONS for k in kinds]
 
 
+def _lost(ev: pd.DataFrame, h: int) -> dict:
+    n = len(ev)
+    usable = ev[f"exit_date_{h}"].notna().to_numpy()
+    gap = ev[f"missing_{h}"].to_numpy(dtype=bool)
+    miss = gap & ~ev["stale_entry"].to_numpy(dtype=bool)
+    other = usable & ~gap & ev[f"net_abn_{h}"].isna().to_numpy()  # ETF price gap or undefined betas
+    return {"n_events": n, "missing": int(miss.sum()), "share": float(miss.mean()) if n else math.nan,
+            "etf_or_beta_missing": int(other.sum()), "embargoed_or_beyond_panel": int((~usable).sum())}
+
+
 def _missing_exits(primary: pd.DataFrame, plc: pd.DataFrame) -> list[dict]:
     rows = []
     for h in params.HORIZONS:
-        n, m = len(primary), int(primary[f"missing_{h}"].sum())
-        pn, pm = len(plc), int(plc[f"missing_{h}"].sum()) if len(plc) else 0
-        rows.append({"horizon": int(h), "n_events": n, "missing": m, "share": m / n if n else math.nan,
-                     "embargoed_or_beyond_panel": int(primary[f"exit_date_{h}"].isna().sum()),
-                     "placebo_missing": pm, "placebo_share": pm / pn if pn else math.nan})
+        p = _lost(plc, h)
+        rows.append({"horizon": int(h), **_lost(primary, h), "placebo_missing": p["missing"],
+                     "placebo_share": p["share"], "placebo_etf_or_beta_missing": p["etf_or_beta_missing"]})
     return rows
+
+
+def _stale_summary(primary: pd.DataFrame, plc: pd.DataFrame, including: dict) -> dict:
+    flag = primary["stale_entry"].to_numpy(dtype=bool)
+    years = pd.DatetimeIndex(primary["date"]).year
+    by = pd.DataFrame({"year": years, "stale": flag}).groupby("year")["stale"].agg(["size", "sum"])
+    n, pn = len(primary), len(plc)
+    return {"rule": STALE_OPEN_RULE, "n_events": n, "n_stale": int(flag.sum()),
+            "share": float(flag.mean()) if n else math.nan,
+            "placebo_n_stale": int(plc["stale_entry"].sum()) if pn else 0,
+            "placebo_share": float(plc["stale_entry"].mean()) if pn else math.nan,
+            "by_year": [{"year": int(y), "events": int(r["size"]), "stale": int(r["sum"]),
+                         "share": float(r["sum"] / r["size"])} for y, r in by.iterrows() if r["sum"]],
+            "including_stale": including}
+
+
+def _drift_adjusted(plc: pd.DataFrame, dec: Decomposition, member: pd.DataFrame, dev_dates: pd.DatetimeIndex,
+                    col: str, h: int) -> dict:
+    daily = (dec.resid + dec.alpha).reindex(index=dev_dates)  # = r - beta_mkt*mkt - beta_sec*sec: alpha excluded
+    mu = daily.where(member.reindex(index=dev_dates, columns=daily.columns).eq(True)).mean()
+    adj = plc[col].to_numpy(dtype=float) - h * plc["ticker"].map(mu).to_numpy(dtype=float)
+    return _summ(pd.Series(adj), plc["date"], f"placebo {col} minus {h} x ticker mean daily abnormal return")
 
 
 def _news_factor(primary: pd.DataFrame, panel: Panel, news: bool, refresh: bool) -> dict:
@@ -240,7 +360,7 @@ def run(panel: Panel | None = None, dec: Decomposition | None = None, *, members
     import_all()
     started = _dt.datetime.now(_dt.timezone.utc)
     cfg = settings()
-    h = int(params.PRIMARY_HORIZON)
+    h, entry = int(params.PRIMARY_HORIZON), params.ENTRY
     metric, gross, exit_col = f"net_abn_{h}", f"abn_{h}", f"exit_date_{h}"
 
     if panel is None:
@@ -252,21 +372,27 @@ def run(panel: Panel | None = None, dec: Decomposition | None = None, *, members
     dev_dates = panel.dates[(panel.dates >= cfg.dev_start) & (panel.dates < cfg.holdout_start)]
     if not len(dev_dates):
         raise ValueError(f"panel has no trading days in the development window from {cfg.dev_start.date()}")
+    stale = stale_opens(panel)
+    # Every return below is computed on this panel, so a fake open is never a fill for events or placebo.
+    trade = dataclasses.replace(panel, open=panel.open.mask(stale))
 
     base: dict[float, pd.DataFrame] = {}
     by_z: dict[float, pd.DataFrame] = {}
     primary_z = float(params.EVENT_Z_THRESHOLD)
     for z in dict.fromkeys([*map(float, params.EVENT_Z_GRID), primary_z]):
         base[z] = _dev(ev_mod.find_events(dec, panel, z_threshold=z, side="down"))
-        by_z[z] = ev_mod.add_forward_returns(base[z], panel, entry=ENTRY)
+        by_z[z] = ev_mod.add_forward_returns(base[z], trade, entry=entry).assign(
+            stale_entry=_stale_entry(base[z], stale))
     primary = by_z[primary_z]
     if primary.empty:
         raise ValueError("no primary events in the development window")
 
     primary_stat = _summ(primary[metric], primary["date"], f"primary {metric}")
     horizons = _horizon_table(primary, ("raw", "abn", "net_abn"), "primary")
+    literal = ev_mod.add_forward_returns(base[primary_z], panel, entry=entry)
+    including_stale = _summ(literal[metric], literal["date"], f"primary {metric}, stale opens used as fills")
 
-    positions = ev_mod.position_daily_returns(primary, panel, h, entry=ENTRY)
+    positions = ev_mod.position_daily_returns(primary, trade, h, entry=entry)
     cal = stats.calendar_time_portfolio(positions, all_dates=dev_dates)
     sharpe = stats.annualized_sharpe(cal["ret"])
     calendar = {"newey_west": stats.newey_west(cal["ret"]), "sharpe": sharpe,
@@ -282,7 +408,8 @@ def run(panel: Panel | None = None, dec: Decomposition | None = None, *, members
           "chosen_counts": {str(k): int(v) for k, v in choices["chosen"].fillna("none").value_counts().items()},
           "oos_start": oos["date"].min() if len(oos) else None, "oos_end": oos["date"].max() if len(oos) else None}
 
-    plc = ev_mod.add_forward_returns(placebo.placebo_events(primary, panel, dec), panel, entry=ENTRY)
+    plc_days = placebo.placebo_events(primary, panel, dec)
+    plc = ev_mod.add_forward_returns(plc_days, trade, entry=entry).assign(stale_entry=_stale_entry(plc_days, stale))
     plc_net = _summ(plc[metric], plc["date"], f"placebo {metric}")
     plc_gross = _summ(plc[gross], plc["date"], f"placebo {gross}")
     both_dates = pd.concat([primary["date"], plc["date"]], ignore_index=True)
@@ -295,10 +422,10 @@ def run(panel: Panel | None = None, dec: Decomposition | None = None, *, members
     subs = [_summ(primary.loc[(years >= a) & (years <= b), metric], primary.loc[(years >= a) & (years <= b), "date"],
                   f"{a}-{b}", period=f"{a}-{b}") for a, b in SUBPERIODS]
 
-    close_ev = ev_mod.add_forward_returns(base[primary_z], panel, entry="close")
+    close_ev = ev_mod.add_forward_returns(base[primary_z], trade, entry="close")
     bounce = _summ(close_ev[metric] - primary[metric], primary["date"], "close entry minus next-open entry")
     up = ev_mod.add_forward_returns(_dev(ev_mod.find_events(dec, panel, z_threshold=primary_z, side="up")),
-                                    panel, entry=ENTRY)
+                                    trade, entry=entry)
     grid = [_summ(by_z[z][metric], by_z[z]["date"], f"z <= {z}", z=z) for z in params.EVENT_Z_GRID]
 
     primary["peer_z"] = _at(l2.peer_z(dec, panel.member), primary)
@@ -316,10 +443,12 @@ def run(panel: Panel | None = None, dec: Decomposition | None = None, *, members
         "meta": {
             "run_utc": started.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "prereg_path": str(prereg), "prereg_sha256": _sha256(prereg),
+            "provenance": provenance(cfg.root),
+            "readings": list(READINGS), "readings_sha256": _text_sha256(READINGS),
             "data_first_date": panel.dates[0], "data_last_date": panel.dates[-1],
             "dev_start": dev_dates[0], "dev_end": dev_dates[-1], "holdout_start": cfg.holdout_start,
             "holdout_unlocked": holdout.is_unlocked(), "n_tickers": len(panel.tickers),
-            "n_dev_days": len(dev_dates), "entry": ENTRY, "primary_z": primary_z, "primary_horizon": h,
+            "n_dev_days": len(dev_dates), "entry": entry, "primary_z": primary_z, "primary_horizon": h,
             "metric": metric, "cost_bps_per_side": params.COST_BPS_PER_SIDE,
             "n_events_by_z": {str(z): int(len(e)) for z, e in by_z.items()},
         },
@@ -329,7 +458,8 @@ def run(panel: Panel | None = None, dec: Decomposition | None = None, *, members
         "horizons": horizons,
         "calendar": calendar,
         "walkforward": wf,
-        "placebo": {"net": plc_net, "gross": plc_gross, "excess": excess, "n_per_event": 1},
+        "placebo": {"net": plc_net, "gross": plc_gross, "excess": excess, "n_per_event": 1,
+                    "drift_adjusted": _drift_adjusted(plc, dec, panel.member, dev_dates, gross, h)},
         "subperiods": subs,
         "secondary": {
             "close_entry": _horizon_table(close_ev, ("net_abn",), "close entry"),
@@ -340,10 +470,11 @@ def run(panel: Panel | None = None, dec: Decomposition | None = None, *, members
             "news": news_res,
         },
         "missing_exits": _missing_exits(primary, plc),
+        "stale_entries": _stale_summary(primary, plc, including_stale),
         "coverage": {"status": cov_status, "summary": _coverage_summary(cov),
                      "table": [] if cov is None else cov.reset_index().to_dict("records")},
         "frames": {"dec": dec, "events": by_z, "primary": primary, "placebo": plc, "oos": oos, "choices": choices,
-                   "calendar": cal, "coverage": cov, "up": up, "close_entry": close_ev},
+                   "calendar": cal, "coverage": cov, "up": up, "close_entry": close_ev, "stale": stale},
     }
     if write:
         results["paths"] = _write(results, out_dir)

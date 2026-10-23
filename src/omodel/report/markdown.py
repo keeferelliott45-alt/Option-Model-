@@ -118,6 +118,30 @@ def _tested_section(m: dict, p: dict) -> list[str]:
         f"{day(m.get('holdout_start'))} was {'UNLOCKED' if m.get('holdout_unlocked') else 'not touched'}.", ""]
 
 
+def _readings_section(m: dict) -> list[str]:
+    readings = m.get("readings") or []
+    if not readings:
+        return []
+    intro = ("Choices made in code that PREREGISTRATION.md does not spell out. They were fixed before any real-data "
+             "result and belong verbatim in a dated amendment before the first real run "
+             f"(readings sha256 `{m.get('readings_sha256')}`).")
+    return ["## Implementation readings", "", intro, ""] + [f"{i}. {x}" for i, x in enumerate(readings, 1)] + [""]
+
+
+def _provenance_lines(m: dict) -> list[str]:
+    prov = m.get("provenance") or {}
+    status = prov.get("git_status", "unknown")
+    head = prov.get("git_head")
+    line = f"Code: git `{head[:12] if head else 'none'}` ({status}); code sha256 `{prov.get('code_sha256') or NA}`."
+    if status == "clean":
+        return [line]
+    files = prov.get("uncommitted") or []
+    listed = f" Uncommitted: {', '.join(files[:10])}{', ...' if len(files) > 10 else ''}." if files else ""
+    return [line, "", f"**PROVENANCE WARNING: the pre-registration and/or the code were NOT committed when this ran "
+                      f"(git: {status}).{listed} The commit history cannot show that the design preceded these "
+                      "results; treat them as provisional.**"]
+
+
 def _pv(p: dict, name: str) -> Any:
     return (p.get(name) or {}).get("value", NA)
 
@@ -145,17 +169,18 @@ def _wf_section(r: dict) -> list[str]:
 def _full_section(r: dict) -> list[str]:
     pr = r["primary"]
     h = r["meta"].get("primary_horizon")
-    by = {(row["horizon"], row["kind"]): row for row in r["horizons"]}
-    hs = sorted({row["horizon"] for row in r["horizons"]})
-    rows = [[f"{x}d", mean_ci(by.get((x, "raw"), {})), mean_ci(by.get((x, "abn"), {})),
-             mean_ci(by.get((x, "net_abn"), {}))] for x in hs]
     return [
         "## Full-window result: pre-registered single test (no parameters fit)", "",
-        "Every event in the development window at the pre-registered threshold and horizon; nothing was chosen.", "",
+        "Every event in the development window at the pre-registered threshold and horizon; nothing was chosen. "
+        f"Only the {h}-day net abnormal return decides; other horizons and raw returns are secondary.", "",
         f"- **Net abnormal {h}d return:** {stat_line(pr)}",
-        f"- Before costs (abnormal {h}d): {stat_line(pr.get('gross', {}))}", "",
-        f"By horizon (mean [{LEVEL} CI] (n); raw = unhedged stock return, abnormal = factor-hedged):", "",
-        table(["Horizon", "Raw", "Abnormal", "Net abnormal"], rows), ""]
+        f"- Before costs (abnormal {h}d): {stat_line(pr.get('gross', {}))}", ""]
+
+
+def _horizon_rows(r: dict) -> list[list[str]]:
+    by = {(row["horizon"], row["kind"]): row for row in r["horizons"]}
+    return [[f"{x}d", mean_ci(by.get((x, "raw"), {})), mean_ci(by.get((x, "abn"), {})),
+             mean_ci(by.get((x, "net_abn"), {}))] for x in sorted({row["horizon"] for row in r["horizons"]})]
 
 
 def _placebo_section(r: dict) -> list[str]:
@@ -164,17 +189,22 @@ def _placebo_section(r: dict) -> list[str]:
     h = r["meta"].get("primary_horizon")
     return [
         "## Placebo", "",
-        "Same tickers, random member days with finite model inputs and no real event within the cooldown window, "
-        "one draw per event, run through the identical return code.", "",
+        "Same tickers, one random draw per event from member days with finite model inputs and the same price "
+        "filter, excluding each real event day and the days inside its own forward window (past events only, so the "
+        "placebo never conditions on its own future), run through the identical return code.", "",
         f"- **Placebo abnormal {h}d return (before the fixed cost):** {stat_line(pl['gross'])}",
         f"- Placebo net of costs: {stat_line(pl['net'])}",
         f"- **Events minus placebo (criterion 1b):** {pct(ex.get('diff'))}, {LEVEL} CI "
         f"{ci(ex.get('lo'), ex.get('hi'))}; "
         f"events n={count(ex.get('n_high'))} (effective months {num(ex.get('n_eff_high'), 0)}), placebo "
         f"n={count(ex.get('n_low'))} (effective months {num(ex.get('n_eff_low'), 0)}).",
+        f"- Diagnostic only (not a criterion): placebo minus {h} x each ticker's mean daily abnormal return over the "
+        f"window: {stat_line(pl.get('drift_adjusted') or {})}. Near zero here while the raw placebo is not points to "
+        "drift shared by every day of these tickers (e.g. survivors), not to lookahead.",
         "",
         "A placebo mean away from zero means a pipeline bug or a drift shared by every day (e.g. survivors); the "
-        "pre-registration treats the run as invalid until the cause is found.", ""]
+        "pre-registration treats the run as invalid until the cause is found. The diagnostic above does not restore "
+        "validity; only an amendment written before any result could.", ""]
 
 
 def _calendar_section(r: dict) -> list[str]:
@@ -200,7 +230,11 @@ def _subperiod_section(r: dict) -> list[str]:
 def _secondary_section(r: dict) -> list[str]:
     sec = r["secondary"]
     h = r["meta"].get("primary_horizon")
-    out = ["## Secondary analyses (reported, not decision-driving)", ""]
+    out = ["## Secondary analyses (reported, not decision-driving)", "",
+           "### Other horizons and raw returns", "",
+           f"Mean [{LEVEL} CI] (n); raw = unhedged stock return, abnormal = factor-hedged. Only the {h}d net abnormal "
+           "cell repeats the pre-registered test.", "",
+           table(["Horizon", "Raw", "Abnormal", "Net abnormal"], _horizon_rows(r)), ""]
     close_rows = [[f"{s['horizon']}d", mean_ci(s)] for s in sec["close_entry"]]
     out += ["### Entry at the event-day close (how much is untradeable bounce)", "",
             table(["Horizon", "Net abnormal, close entry"], close_rows), "",
@@ -259,13 +293,30 @@ def _coverage_section(r: dict) -> list[str]:
         out += [f"Coverage not measured: {cov.get('status')}. The survivorship bias of free price data still "
                 "applies to any real-data run.", ""]
     rows = [[f"{m['horizon']}d", count(m["n_events"]), f"{count(m['missing'])} ({pct(m['share'], 1, False)})",
-             count(m["embargoed_or_beyond_panel"]), pct(m.get("placebo_share"), 1, False)]
-            for m in r["missing_exits"]]
+             count(m.get("etf_or_beta_missing")), count(m["embargoed_or_beyond_panel"]),
+             pct(m.get("placebo_share"), 1, False)] for m in r["missing_exits"]]
     out += ["Events whose stock price disappears before the exit are excluded, not counted as losses. A higher "
-            "share than on placebo days is a survivorship warning sign.", "",
-            table(["Horizon", "Events", "Missing exit price", "Embargoed / beyond data", "Placebo missing"], rows),
-            ""]
-    return out
+            "share than on placebo days is a survivorship warning sign. Events lost to a sector-ETF or SPY price gap "
+            "(or undefined betas) are excluded and counted separately.", "",
+            table(["Horizon", "Events", "Missing stock price", "Lost to ETF/beta gap", "Embargoed / beyond data",
+                   "Placebo missing stock price"], rows), ""]
+    return out + _stale_section(r)
+
+
+def _stale_section(r: dict) -> list[str]:
+    st = r.get("stale_entries") or {}
+    if not st:
+        return []
+    years = ", ".join(f"{y['year']}: {y['stale']}/{y['events']}" for y in st.get("by_year", [])) or "none"
+    return ["### Entry opens that were not real trades", "",
+            f"Rule: {st.get('rule')}. Such an open is a free-data artifact (often the prior close copied forward), so "
+            "using it would quietly turn the next-open entry into a close entry. These entries are treated as "
+            "missing for events and placebo alike.", "",
+            f"- Primary events affected: {count(st.get('n_stale'))} of {count(st.get('n_events'))} "
+            f"({pct(st.get('share'), 1, False)}); placebo days: {count(st.get('placebo_n_stale'))} "
+            f"({pct(st.get('placebo_share'), 1, False)}). By year (stale/events): {years}.",
+            f"- Sensitivity, stale opens used as fills (literal reading, not decision-driving): "
+            f"{stat_line(st.get('including_stale') or {})}", ""]
 
 
 def _fluke_section(r: dict) -> list[str]:
@@ -303,6 +354,13 @@ def _fluke_section(r: dict) -> list[str]:
     elif is_num(gross):
         items.append(f"**Costs.** The mean is already {pct(gross)} before costs, so cost assumptions cannot explain "
                      "a negative result.")
+    st = r.get("stale_entries") or {}
+    if st:
+        with_stale = (st.get("including_stale") or {}).get("mean")
+        items.append(f"**Fake opens.** {pct(st.get('share'), 1, False)} of events had a t+1 open that was not a real "
+                     f"trade and were dropped; using them as fills gives {pct(with_stale)} instead of "
+                     f"{pct(pr.get('mean'))}. A large gap means early-year data quality, not the effect, drives part "
+                     "of the result.")
     items.append(f"**Untradeable bounce.** Entering at the event-day close instead of the next open changes the mean "
                  f"by {pct(sec['bounce'].get('mean'))} {ci(sec['bounce'].get('ci_lo'), sec['bounce'].get('ci_hi'))}; "
                  "that part could not have been captured.")
@@ -348,12 +406,12 @@ def render_phase1(results: dict) -> str:
     head += ["", f"Run {m.get('run_utc')}; data {day(m.get('data_first_date'))} to "
                  f"{day(m.get('data_last_date'))}; {count(m.get('n_tickers'))} tickers, "
                  f"{count(m.get('n_dev_days'))} development trading days; PREREGISTRATION.md sha256 "
-                 f"`{sha if sha else 'NOT FOUND'}`.", ""]
+                 f"`{sha if sha else 'NOT FOUND'}`.", *_provenance_lines(m), ""]
     p = r.get("params", {})
     n_fit = sum(1 for v in p.values() if v.get("source") == "data-fit")
     tail = ["## Parameters", "",
             f"{len(p)} registered parameters, {n_fit} fit to data. Full list with provenance: docs/PARAMETERS.md.", ""]
-    parts = (head + _criteria_section(r) + _tested_section(m, p) + _wf_section(r) + _full_section(r)
+    parts = (head + _criteria_section(r) + _tested_section(m, p) + _readings_section(m) + _wf_section(r) + _full_section(r)
              + _placebo_section(r) + _calendar_section(r) + _subperiod_section(r) + _secondary_section(r)
              + _coverage_section(r) + _fluke_section(r) + tail)
     return "\n".join(parts)

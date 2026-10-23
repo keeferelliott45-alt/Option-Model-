@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from omodel.backtest.placebo import EVENT_COLUMNS, placebo_events
+from omodel import params
+from omodel.backtest.placebo import EVENT_COLUMNS, eligible_days, placebo_events
 from omodel.types import Decomposition, Panel
 
 TICKERS = ["AAA", "BBB", "CCC", "DDD"]
@@ -83,10 +84,34 @@ def test_exclusion_window_and_date_range(window):
     assert len(pl) == 4 * (len(ev) - 1)
     for t, grp in pl.groupby("ticker"):
         real = ev.loc[ev["ticker"] == t, "pos"].to_numpy()
-        dist = np.abs(grp["pos"].to_numpy()[:, None] - real[None, :]).min(axis=1)
-        assert (dist > window).all()
+        lag = grp["pos"].to_numpy()[:, None] - real[None, :]
+        assert not ((lag >= 0) & (lag <= window)).any()  # never an event day or inside an event's own window
     assert pl["date"].min() >= ev["date"].min() and pl["date"].max() <= ev["date"].max()
     assert not pl.duplicated(["ticker", "date"]).any()
+
+
+def test_eligibility_never_depends_on_later_events():
+    # Excluding days BEFORE a real event would keep only placebo windows without a future drop: lookahead.
+    panel, dec = _world()
+    d = panel.dates
+    ev = _events(panel, dec, _picks(panel))
+    base = eligible_days(ev, panel, dec, exclude_window=15)
+    more = eligible_days(_events(panel, dec, _picks(panel) + [(d[205], "AAA")]), panel, dec, exclude_window=15)
+    pd.testing.assert_frame_equal(base.iloc[:205], more.iloc[:205])
+    assert base["AAA"].iloc[190:205].all()  # the 15 days just before the new event stay eligible
+    assert not more["AAA"].iloc[205:221].any() and base["AAA"].iloc[205:221].all()
+    assert base["AAA"].iloc[285:300].all() and not base["AAA"].iloc[300:316].any()
+
+
+def test_price_filter_matches_events():
+    panel, dec = _world()
+    ev = _events(panel, dec, _picks(panel))
+    panel.raw_close.iloc[100:200, 0] = 4.0
+    ok = eligible_days(ev, panel, dec)
+    assert not ok["AAA"].iloc[100:200].any() and ok["AAA"].iloc[200:300].any()
+    pl = placebo_events(ev, panel, dec, n_per_event=50)
+    assert (pl["price"] >= params.MIN_PRICE).all()
+    assert eligible_days(ev, panel, dec, min_price=3.0)["AAA"].iloc[100:150].any()
 
 
 def test_drawn_dates_are_member_days_with_finite_inputs():
