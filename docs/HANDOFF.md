@@ -36,19 +36,16 @@ Env: `SEC_USER_AGENT="Name email"` (SEC requires contact info). Data cache: `dat
 | Foundation | `config.py`, `params.py`, `holdout.py`, `types.py`, `data/http.py`, `data/store.py` | done, tested |
 | Prices + point-in-time S&P 500 membership + panel | `data/yahoo.py`, `data/universe.py`, `data/panel.py` | done, reviewed, fixed |
 | Macro (Treasury, CBOE VIX family, credit/FX/commodities) | `data/macro.py` | done, reviewed, fixed |
-| SEC 8-K news/earnings dates, companyfacts fetch | `data/sec.py` | done, tests pass, **not yet reviewed** |
+| SEC 8-K news/earnings dates, companyfacts fetch | `data/sec.py` | done, reviewed, fixed |
 | CBOE live chains + daily snapshot archiver | `data/cboe_options.py` | done, reviewed, fixed |
 | Layer 2 rolling market+sector residual model | `layers/l2_decomposition.py` | done, reviewed, fixed |
-| Event study + forward returns + calendar-time positions | `backtest/events.py` | done, reviewed; 2 medium items open |
+| Event study + forward returns + calendar-time positions | `backtest/events.py` | done, reviewed, fixed; boundary + lookahead tests added |
 | Cluster bootstrap, Newey-West, BH, factor tests | `backtest/stats.py`, `backtest/factor_tests.py` | done, reviewed, fixed |
-| Walk-forward + placebo | `backtest/walkforward.py`, `backtest/placebo.py` | done, tests pass, **not yet reviewed** |
+| Walk-forward + placebo | `backtest/walkforward.py`, `backtest/placebo.py` | done, reviewed, fixed |
 | Synthetic market generator | `backtest/synthetic.py` | done, reviewed, fixed |
 | Phase 1 experiment, CLI, report, end-to-end synthetic tests | `experiments/phase1.py`, `report/markdown.py`, `cli.py`, `tests/test_phase1_synthetic.py` | done, tested; run on real data 2026-10-23 — **FAIL** (see Phase 1 outcome below) |
 
-Data cached locally: prices for 751/1163 tickers ever in the S&P 500 since mid-1998 (missing = mostly
-delisted → survivorship bias, reported by `panel.coverage`), SEC submissions for 691 tickers, full macro panel.
-After the prices fix, verify the cache is still compatible (`load_daily` on a cached ticker); if not,
-re-fetch with `--refresh`.
+Data cached locally (measured 2026-10-23): 758 price files (718 of the 1,130 dev-window ticker requests have data; 412 known-missing markers — mostly delisted, i.e. survivorship bias, reported by `panel.coverage`), 686 SEC submission caches, the membership history, and the macro panel (its cache predates the non-positive-price cleaning fix: refetch with `--refresh` before any Phase 2 use). Cache verified compatible with the current loader.
 
 ## Phase 1 outcome (2026-10-23): FAIL — STOP. Do not build Phases 2+.
 
@@ -92,6 +89,56 @@ factor skipped (--no-news); stale-open entries 4.0% (13–16% in 2001–2005; in
 −0.40%, unchanged); stale fit-windows: 1 event > 50% zero returns (PARA 2023-06-14); close-entry bounce
 ≈ 0; factor battery: peer_z is the only borderline BH discovery (p_adj 0.0997, thesis-predicted sign) —
 reported, not decided on; dev-window member-day coverage 70.2% (2000: 47.0%, 2025: 96.9%).
+
+## Session log — 2026-10-23 (review-gap closure, integrity fix, real-data run)
+
+Commits this session, in order: `0ff10f8` (finish Phase 1 integration), `8f0d0ba` (track src/omodel/data),
+`10d6b33` (review fixes + tests), `c437557` (document the Phase 1 outcome and run artifacts).
+
+1. Verified the finished Phase 1 integration against the pre-registration, then committed it (0ff10f8).
+   Suite at that point: 314 passed + 1 environmental failure (the CLI dirty-tree guard, fixed by committing).
+2. Adversarial review of `data/sec.py`, `backtest/walkforward.py`, `backtest/placebo.py` (lenses: lookahead,
+   spec-vs-code, real-data robustness, test adequacy): no lookahead found in any of them. Confirmed correct:
+   walk-forward purge (`exit_ < test_start`), anchored non-drifting splits, contiguous non-overlapping test
+   windows, deterministic tie-breaks, legitimate reuse of realized test labels as later fit labels; placebo
+   cooldown arithmetic `[e, e+window]` inclusive, deliberate non-exclusion of pre-event days, unbiased reuse,
+   month-cluster pairing with `cluster_bootstrap_diff`.
+3. Fixes applied from the reviews (10d6b33): `_has_item` splits on commas AND whitespace ("2.02 9.01" used to
+   silently not match); partial SEC submissions pagination now warns and is not cached; a non-positive price
+   guard for gold/oil in `macro.py` (the 2020-04-20 CL=F −37.63 settlement is now cleaned to NaN — refetch the
+   macro cache with `--refresh` before any Phase 2 use); walk-forward t-score guard hardened to `np.isfinite`;
+   placebo eligibility additionally requires finite `mkt_ret`/`sec_ret` (defence-in-depth); `types.py` volume
+   comment corrected to "split-adjusted".
+4. Deferred items decided: stale-sigma → diagnostic only (`phase1._flat_share` + the report's "Stale-price
+   windows (diagnostic)" section; on real data 1 of 16,782 events exceeds the 50% zero-return share — PARA
+   2023-06-14 — negligible); panel volume → data already correct, doc fixed; CL=F → cleaned (above).
+5. Tests added: `test_events.py` exit-on-holdout-start embargo boundary (exit landing ON the holdout start is
+   embargoed, one session earlier is kept; entry falling on the holdout start is embargoed) and a model-column
+   lookahead canary (beta_mkt, beta_sec, alpha, tot_sigma, vol_z bit-identical after future prices are
+   scrambled); `test_walkforward.py` equal consecutive fit-window lengths, test_end boundary flows to the next
+   split, realized-test-event reuse as a later fit label; `test_placebo.py` reuse uniformity (floor/ceil),
+   n_per_event=0 empty frame, finite-z-but-NaN-return day ineligible; SEC item splitting + missing-page
+   warning; macro non-positive settlements; stale-window unit test. Suite after all changes: **327 passed,
+   4 deselected** (network smoke tests), clean tree.
+6. Repo-integrity fix (8f0d0ba): the unanchored `data/` ignore rule shadowed `src/omodel/data/` — the entire
+   data-source package had never been tracked, so the CLI's tamper-evidence check was blind to half the code.
+   Anchored to `/data/` and committed the 9 package files. Git identity configured repo-locally
+   (keeferelliott45-alt / GitHub noreply email) so commits work without global config.
+7. Real-data Phase 1 run (`python -m omodel phase1 --no-news`; SEC_USER_AGENT unset, so the secondary 8-K
+   factor is skipped): **FAIL**, `run_invalid: true` — details and diagnosis in the section above.
+8. Placebo diagnosis executed per criterion 3's own rule (read-only recomputation from the cached panel and
+   `data/results/phase1_events.parquet`): the −0.155% placebo mean is fully accounted for by event-day
+   contamination inherent in the pre-registered pool definition (12.66% of windows contain a same-ticker event
+   day averaging −5.87%); mixture accounting reproduces the mean to within 5%; alternative explanations
+   (terminal delisting stretches, year concentration, selloff concentration, near-data-end events) quantified
+   and excluded.
+9. Per thesis rule 1: STOPPED. No Phase 2+ code was written. `docs/PREREGISTRATION.md` untouched (SHA verified
+   at run time and absent from every commit).
+
+Environment notes for the next agent: `SEC_USER_AGENT` is NOT set (set it before any run that needs the 8-K
+factor; SEC submissions for 686 tickers are already cached, so no fetching is needed); the Phase 1 run works
+fully offline from the cache (~20 s end to end); `data/results/phase1_events.parquet` holds the event list;
+`reports/phase1/` holds the failing run's artifacts (committed at c437557).
 
 ## Next steps, in order
 
