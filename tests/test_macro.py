@@ -202,6 +202,18 @@ def test_read_csv_recovers_minority_date_format_and_warns_on_junk():
     assert iso["X"].tolist() == [1.0, 2.0]
 
 
+def test_price_columns_clean_nonpositive_settlements_to_nan(monkeypatch):
+    # same cleaning path FX uses: non-positive prints (2020-04-20 CL=F settled at -37.63) become NaN, not ffilled here
+    idx = pd.DatetimeIndex(["2020-04-17", "2020-04-20", "2020-04-21"])
+    raw = pd.DataFrame({"adj_close": [18.27, -37.63, 0.0]}, index=idx)
+    assert macro.PRICE_COLUMNS == ("gold", "oil")
+    for col in macro.PRICE_COLUMNS:
+        monkeypatch.setattr(macro.yahoo, "load_daily", lambda tic, refresh=False: raw)
+        out = macro._yahoo_series(col, macro.YAHOO_SOURCES[col], refresh=False)
+        assert np.isnan(out.loc["2020-04-20"]) and np.isnan(out.loc["2020-04-21"])
+        assert out.loc["2020-04-17"] == 18.27 and out.index.equals(idx)
+
+
 VIX_CSV = ("DATE,OPEN,HIGH,LOW,CLOSE\n"
            "01/02/1990,17.24,17.24,17.24,17.24\n"
            "01/03/1990,18.19,18.30,18.00,18.19\n")

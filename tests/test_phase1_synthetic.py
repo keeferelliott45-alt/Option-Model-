@@ -4,6 +4,7 @@ import re
 import shutil
 import subprocess
 from contextlib import contextmanager
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -165,6 +166,19 @@ def test_placebo_pool_is_unbiased_in_a_drift_free_null(null_world):
     assert biased["ci_lo"] > 0 and biased["mean"] > clean["mean"] + 0.002, biased
 
 
+def test_flat_share_measures_zero_return_stretches():
+    idx = pd.bdate_range("2015-01-05", periods=120)
+    live = np.random.default_rng(7).normal(0.0, 0.02, len(idx))
+    flat = np.where(np.arange(len(idx)) < 100, 0.0, 0.05)  # 100 flat days, then a jump
+    dec = SimpleNamespace(stock_ret=pd.DataFrame({"FLAT": flat, "LIVE": live}, index=idx))
+    ev = pd.DataFrame({"date": [idx[100], idx[100], idx[50]], "ticker": ["FLAT", "LIVE", "FLAT"]})
+    share = phase1._flat_share(dec, ev)
+    # Event at r=100 uses rows [r-90, r-1]: all of FLAT's are exactly 0, none of LIVE's are.
+    assert share[0] == pytest.approx(1.0)
+    assert share[1] == 0.0
+    assert np.isnan(share[2])  # r < window: the fit itself would not have a full window either
+
+
 def test_preregistration_contract(null_world):
     panel, res, calls = null_world
     assert phase1._sha256(config.ROOT / "docs" / "PREREGISTRATION.md") == PREREG_SHA256, (
@@ -220,6 +234,9 @@ def test_results_are_internally_consistent(null_world):
     names = [f["name"] for f in res["secondary"]["factors"]]
     assert names == ["vol_z", "sec_ret", "mkt_ret", "peer_z", "abs_z"]
     assert res["secondary"]["news"]["status"].startswith("skipped")
+    sw = res["secondary"]["stale_windows"]
+    assert sw["gt_50pct"] == 0 and sw["gt_90pct"] == 0  # synthetic worlds never go exactly flat
+    assert isinstance(sw["worst"], list)
     assert res["coverage"]["status"].startswith("skipped")
     m15 = next(m for m in res["missing_exits"] if m["horizon"] == h)
     assert [m["horizon"] for m in res["missing_exits"]] == list(params.HORIZONS)
@@ -418,7 +435,8 @@ def test_run_builds_panel_writes_outputs_and_measures_coverage(null_world, tmp_p
                    "## What would have to be true for this to be a fluke", "Coverage by year",
                    "## Decision: pre-registered criteria", "in-sample, descriptive only", "PROVENANCE WARNING",
                    "## Implementation readings", "past events only", "Lost to ETF/beta gap",
-                   "### Entry opens that were not real trades", "Diagnostic only (not a criterion)"):
+                   "### Entry opens that were not real trades", "Diagnostic only (not a criterion)",
+                   "### Stale-price windows (diagnostic)"):
         assert phrase in report, phrase
     assert not NAN_RE.search(report)
     primary_section = report.split("## Full-window result")[1].split("\n## ")[0]

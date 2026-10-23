@@ -11,7 +11,7 @@ class Panel:
 
     close: pd.DataFrame      # split/dividend-adjusted close, tickers as columns
     open: pd.DataFrame       # adjusted open = raw open * adj_close / raw close
-    volume: pd.DataFrame     # raw share volume
+    volume: pd.DataFrame     # split-adjusted share volume (Yahoo pre-multiplies pre-split volume by the split factor)
     member: pd.DataFrame     # bool: was an S&P 500 member on that date
     etf_close: pd.DataFrame  # adjusted close for MARKET_ETF and SECTOR_ETFS (NaN before inception)
     etf_open: pd.DataFrame

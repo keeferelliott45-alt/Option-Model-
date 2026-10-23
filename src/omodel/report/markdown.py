@@ -269,6 +269,20 @@ def _secondary_section(r: dict) -> list[str]:
                  f"{news.get('n_tickers')} tickers have no CIK in SEC's current map"
                  + (f" ({', '.join(missing[:30])}{', ...' if len(missing) > 30 else ''})" if missing else ""))
     out += [line, ""]
+    sw = sec.get("stale_windows") or {}
+    if sw:
+        th = _pv(r.get("params") or {}, "STALE_WINDOW_SHARES")
+        th = th if isinstance(th, (list, tuple)) else []
+        rows = [[day(w.get("date")), w.get("ticker"), pct(w.get("flat_share"), 1, False), num(w.get("z"))]
+                for w in sw.get("worst", [])]
+        out += ["### Stale-price windows (diagnostic)", "",
+                f"Rule: {sw.get('rule')}. Halted or illiquid stretches make stock returns exactly zero, deflating "
+                "the rolling sigma so z = resid/sigma can spike and manufacture a fake event. Diagnostic only: no "
+                "criterion or event selection uses it.", "",
+                f"- Mean flat share over {count(sw.get('n_events'))} events: {pct(sw.get('mean'), 1, False)}; "
+                f"events above {pct(th[0] if th else None, 0, False)}: {count(sw.get('gt_50pct'))}; above "
+                f"{pct(th[1] if th else None, 0, False)}: {count(sw.get('gt_90pct'))}.", "",
+                table(["Date", "Ticker", "Flat share", "z"], rows), ""]
     return out
 
 

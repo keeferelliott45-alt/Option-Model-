@@ -143,6 +143,21 @@ def test_load_submissions_merges_files_pages_and_caches(fake_http):
     assert len(calls) == n
 
 
+def test_load_submissions_missing_page_warns_and_not_cached(fake_http):
+    routes, calls = fake_http
+    routes["https://data.sec.gov/submissions/CIK0000000002.json"] = {
+        "filings": {"recent": _page(_realistic_rows(prefix="25"), shift=1),
+                    "files": [{"name": "CIK0000000002-submissions-001.json"}]}}  # older page never served -> 404
+
+    with pytest.warns(UserWarning, match="CIK 2 older submissions page\\(s\\) missing"):
+        subs = sec.load_submissions(2)
+    assert len(subs) == 60  # partial frame: only the recent page
+    assert store.read("sec_submissions", "2") is None  # incomplete history must not be cached
+
+    pd.testing.assert_frame_equal(sec.load_submissions(2), subs)
+    assert len(calls) == 4  # each refetch retries both pages, never serves the stale partial copy
+
+
 @pytest.mark.parametrize("shift", [0, 1, 2])
 def test_acceptance_normalised_to_true_utc_whatever_the_feed_convention(fake_http, shift):
     routes, _ = fake_http
@@ -260,6 +275,18 @@ def test_news_days_forms_and_items():
     assert list(sec.news_days(subs, TD, items=("5.02",))) == [pd.Timestamp("2024-01-10")]
     assert list(sec.news_days(subs, TD, forms=("10-K",))) == [pd.Timestamp("2024-01-16")]
     assert len(sec.news_days(subs.iloc[:0], TD)) == 0
+
+
+def test_has_item_splits_on_commas_and_whitespace():
+    subs = _subs([
+        ("8-K", "2024-01-01", None, "2.02 9.01"),      # space-separated, e.g. hand-typed feeds
+        ("8-K", "2024-01-02", None, "2.02, 8.01"),     # comma + space
+        ("8-K", "2024-01-03", None, "2.02,9.01"),
+        ("8-K", "2024-01-04", None, " 5.02 "),         # padded non-match; trailing comma yields empty token
+        ("8-K", "2024-01-05", None, ""),
+    ])
+    hit = sec._has_item(subs["items"], ("2.02",))
+    assert hit.tolist() == [True, True, True, False, False]
 
 
 # --- news flags -------------------------------------------------------------------------------

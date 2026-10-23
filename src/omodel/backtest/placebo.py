@@ -26,8 +26,10 @@ def _eligible(panel: Panel, dec: Decomposition, tickers: list[str], ev_pos: np.n
     dates = panel.dates
     member = panel.member.reindex(index=dates, columns=tickers)
     ok = member.eq(True).to_numpy()
-    for f in (dec.z, dec.sigma, dec.beta_mkt, dec.beta_sec):
+    for f in (dec.z, dec.sigma, dec.beta_mkt, dec.beta_sec, dec.sec_ret):
         ok &= np.isfinite(f.reindex(index=dates, columns=tickers).to_numpy(dtype=float))
+    # z finite implies today's returns finite only via NaN propagation inside l2's resid formula: check directly.
+    ok &= np.isfinite(dec.mkt_ret.reindex(index=dates).to_numpy(dtype=float))[:, None]
     price = panel.raw_close if panel.raw_close is not None else panel.close
     ok &= price.reindex(index=dates, columns=tickers).to_numpy(dtype=float) >= min_price  # same filter as events
     ok[: ev_pos.min()] = False

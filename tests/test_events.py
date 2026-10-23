@@ -7,6 +7,7 @@ import pytest
 from omodel import params
 from omodel.backtest import events as ev
 from omodel.config import settings
+from omodel.layers import l2_decomposition as l2
 from omodel.types import Decomposition, Panel
 
 # Column order deliberately not alphabetical: outputs must sort by ticker name, not column position.
@@ -364,3 +365,109 @@ def test_future_perturbation_leaves_earlier_outputs_unchanged():
     ids = base_fwd.index[base_fwd["exit_date_5"] < panel.dates[cut]]
     pd.testing.assert_frame_equal(base_pos[base_pos["event_id"].isin(ids)].reset_index(drop=True),
                                   later_pos[later_pos["event_id"].isin(ids)].reset_index(drop=True))
+
+
+# ---------------------------------------------------------------- holdout boundary / model-column canary
+
+def test_exit_on_holdout_start_is_embargoed_but_one_session_early_is_kept():
+    hs = settings().holdout_start
+    panel = make_panel(start=hs - pd.offsets.BDay(20), n=40)
+    assert panel.dates[20] == hs  # the holdout start itself is a session of the panel
+    events = event_rows(panel, [(4, "AAA"), (5, "BBB"), (19, "CCC")])
+    out = ev.add_forward_returns(events, panel, horizons=(1, 5, 15), cost_bps=COST).set_index("ticker")
+
+    # AAA: the 15-session exit lands one session BEFORE the holdout start -> fully computed.
+    for h in (1, 5, 15):
+        assert out.at["AAA", f"exit_date_{h}"] == panel.dates[4 + h]
+        assert np.isfinite(out.at["AAA", f"net_abn_{h}"]) and not out.at["AAA", f"missing_{h}"]
+
+    # BBB: the 15-session exit lands exactly ON the holdout start -> embargoed, not a data gap.
+    assert out.at["BBB", "exit_date_5"] == panel.dates[10]
+    assert np.isfinite(out.at["BBB", "net_abn_1"]) and np.isfinite(out.at["BBB", "net_abn_5"])
+    assert pd.isna(out.at["BBB", "exit_date_15"])
+    for col in ("raw_15", "mkt_15", "sec_15", "abn_15", "net_raw_15", "net_abn_15"):
+        assert np.isnan(out.at["BBB", col])
+    assert not out.at["BBB", "missing_15"]
+
+    # CCC: last pre-holdout session; its t+1 open entry falls ON the holdout start, so entry_ok fails.
+    assert pd.isna(out.at["CCC", "entry_date"]) and np.isnan(out.at["CCC", "entry_px"])
+    assert out.loc["CCC", ["net_abn_1", "net_abn_5", "net_abn_15"]].isna().all()
+    assert out.loc["CCC", ["exit_date_1", "exit_date_5", "exit_date_15"]].isna().all()
+    assert not out.loc[:, ["missing_1", "missing_5", "missing_15"]].to_numpy().any()
+
+    pos = ev.position_daily_returns(events, panel, 15, cost_bps=COST)
+    assert set(pos["event_id"]) == {0}
+    assert pos["date"].max() < hs
+
+
+def make_wide_panel(n_days=500, n_stocks=40, seed=11) -> Panel:
+    rng = np.random.default_rng(seed)
+    dates = pd.bdate_range("2019-01-02", periods=n_days)
+    tickers = [f"S{j:02d}" for j in range(n_stocks)]
+    etfs = ["SPY", "XLK", "XLF", "XLY"]
+
+    def walk(cols, vol=0.02):
+        lr = rng.normal(0.0, vol, size=(n_days, len(cols)))
+        return pd.DataFrame(100.0 * np.exp(np.cumsum(lr, axis=0)), index=dates, columns=cols)
+
+    def opens(px):
+        out = px.shift(1) * np.exp(rng.normal(0.0, 0.01, size=px.shape))
+        out.iloc[0] = px.iloc[0]
+        return out
+
+    close, etf_close = walk(tickers), walk(etfs)
+    volume = pd.DataFrame(np.exp(rng.normal(14.0, 0.5, size=(n_days, n_stocks))), index=dates, columns=tickers)
+    return Panel(close=close, open=opens(close), volume=volume,
+                 member=pd.DataFrame(True, index=dates, columns=tickers),
+                 etf_close=etf_close, etf_open=opens(etf_close), raw_close=close * 1.5)
+
+
+def perturb_after(panel: Panel, cut: pd.Timestamp, seed=5) -> Panel:
+    rng = np.random.default_rng(seed)
+    after = np.asarray(panel.dates > cut)
+    k = int(after.sum())
+
+    def scaled(df, factor):
+        out = df.copy()
+        out.loc[after] = df.loc[after].to_numpy() * factor
+        return out
+
+    fs = np.exp(np.cumsum(rng.normal(0.0, 0.03, (k, panel.close.shape[1])), axis=0))
+    fe = np.exp(np.cumsum(rng.normal(0.0, 0.03, (k, panel.etf_close.shape[1])), axis=0))
+    fv = np.exp(rng.normal(0.0, 1.0, (k, panel.volume.shape[1])))
+    return Panel(close=scaled(panel.close, fs), open=scaled(panel.open, fs), volume=scaled(panel.volume, fv),
+                 member=panel.member, etf_close=scaled(panel.etf_close, fe), etf_open=scaled(panel.etf_open, fe),
+                 raw_close=scaled(panel.raw_close, fs))
+
+
+def test_lookahead_canary_model_columns_immune_to_future_prices():
+    panel = make_wide_panel()
+    cut = panel.dates[420]
+    # Deterministic crashes just before the cut guarantee events whose forward windows cross it.
+    panel.close.iloc[419:421, :5] *= 0.85
+    base_dec = l2.decompose(panel)
+    base = ev.find_events(base_dec, panel, z_threshold=-2.0, cooldown=0)
+
+    shaken = perturb_after(panel, cut)
+    shaken_dec = l2.decompose(shaken)
+    shaken_events = ev.find_events(shaken_dec, shaken, z_threshold=-2.0, cooldown=0)
+
+    early = base["date"] <= cut
+    assert early.sum() >= 50
+    # Every model/signal column for events dated <= cut is bit-identical (covers z, resid, sigma, sector, price,
+    # beta_mkt, beta_sec, alpha, tot_sigma, vol_z and the date/ret columns).
+    pd.testing.assert_frame_equal(base[early].reset_index(drop=True),
+                                  shaken_events[shaken_events["date"] <= cut].reset_index(drop=True),
+                                  check_exact=True)
+
+    base_fwd = ev.add_forward_returns(base, panel, horizons=(5,), cost_bps=COST)
+    shaken_fwd = ev.add_forward_returns(shaken_events, shaken, horizons=(5,), cost_bps=COST)
+    b = base_fwd.loc[base_fwd["date"] <= cut, "net_abn_5"].to_numpy(dtype=float)
+    s = shaken_fwd.loc[shaken_fwd["date"] <= cut, "net_abn_5"].to_numpy(dtype=float)
+    exits = base_fwd.loc[base_fwd["date"] <= cut, "exit_date_5"].to_numpy()
+    crossing = exits > cut
+    assert crossing.sum() >= 1
+    # Forward windows crossing the cut must see the shaken prices; nothing earlier may move.
+    assert (~np.isclose(b[crossing], s[crossing], equal_nan=True)).any()
+    done = ~crossing & np.isfinite(b)
+    assert done.sum() >= 1 and np.isclose(b[done], s[done], equal_nan=True).all()

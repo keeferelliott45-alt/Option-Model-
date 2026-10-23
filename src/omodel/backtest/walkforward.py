@@ -74,7 +74,8 @@ def walk_forward(events_by_config: dict[str, pd.DataFrame], metric_col: str, exi
             if n < min_n:
                 continue
             score = _t_score(metric[fit])
-            if not np.isnan(score) and (best is None or score > best_score):
+            # isfinite, not just not-nan: a constant-metric fit window yields an infinite t-score.
+            if np.isfinite(score) and (best is None or score > best_score):
                 best, best_score, best_n = name, score, n
         test_n = 0
         if best is not None:

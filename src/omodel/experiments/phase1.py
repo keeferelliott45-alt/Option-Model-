@@ -38,6 +38,10 @@ STALE_OPEN_RULE = params.register(
     "An entry print that is not a real t+1 opening trade (no volume, or a free-data open copied from the prior "
     "close, ~10-15% of post-drop S&P bars before 2008 vs ~1-2% after) is missing data, not a fill; using it would "
     "silently turn the pre-registered next-open entry into a close entry, which favours H1.")
+STALE_WINDOW_SHARES = params.register(
+    "STALE_WINDOW_SHARES", (0.5, 0.9), "convention", "backtest",
+    "Shares of exactly-zero returns in a fit window above which the window is mostly stale prices (halt, "
+    "illiquidity) and the rolling sigma is deflated, so z = resid/sigma can spike and manufacture fake events.")
 
 PROVENANCE_PATHS = ("docs/PREREGISTRATION.md", "src", "pyproject.toml")
 _H = params.PRIMARY_HORIZON
@@ -208,6 +212,28 @@ def stale_opens(panel: Panel) -> pd.DataFrame:
 
 def _stale_entry(events: pd.DataFrame, stale: pd.DataFrame) -> np.ndarray:
     return np.nan_to_num(_at(stale.shift(-1, fill_value=False).astype(float), events)) > 0
+
+
+def _flat_share(dec: Decomposition, events: pd.DataFrame, window: int | None = None) -> np.ndarray:
+    """Diagnostic only: per event, the share of exactly-zero stock returns among finite returns in its fit window."""
+    window = params.BETA_WINDOW if window is None else window
+    a = dec.stock_ret.to_numpy(dtype=float)
+    r = dec.stock_ret.index.get_indexer(pd.DatetimeIndex(events["date"]))
+    c = dec.stock_ret.columns.get_indexer(events["ticker"])
+    lo = np.maximum(r - window, 0)
+    # Same rows the rolling fit uses: _window_sum is c[hi]-c[lo], i.e. a[lo..hi-1], so rows [t-window, t-1].
+    zero = (a == 0.0).astype(float)  # exact 0.0 only: a halted/illiquid tape, never a real return
+    cf = np.zeros((a.shape[0] + 1, a.shape[1]))
+    cz = np.zeros((a.shape[0] + 1, a.shape[1]))
+    np.cumsum(np.isfinite(a).astype(float), axis=0, out=cf[1:])
+    np.cumsum(zero, axis=0, out=cz[1:])
+    out = np.full(len(events), np.nan)
+    ok = (r >= 0) & (c >= 0) & (r >= window)  # r < window: the fit itself has no full window either
+    if ok.any():
+        n = cf[r[ok], c[ok]] - cf[lo[ok], c[ok]]
+        z0 = cz[r[ok], c[ok]] - cz[lo[ok], c[ok]]
+        out[ok] = np.where(n > 0, z0 / np.maximum(n, 1), np.nan)
+    return out
 
 
 def _coverage(panel: Panel, membership: pd.DataFrame | None) -> tuple[pd.DataFrame | None, str]:
@@ -433,6 +459,21 @@ def run(panel: Panel | None = None, dec: Decomposition | None = None, *, members
     news_res = _news_factor(primary, panel, news, refresh)
     factors = _factor_battery(primary, metric, news_res["status"] == "ok")
 
+    # Diagnostic only: how stale the fit windows behind the booked events were. Never a criterion or a filter.
+    flat = _flat_share(dec, primary)
+    fin = np.flatnonzero(np.isfinite(flat))
+    worst_idx = fin[np.argsort(-flat[fin])][:5]
+    stale_windows = {
+        "rule": f"share of exactly-zero returns among finite returns in the {params.BETA_WINDOW}-day fit window "
+                "[t-90, t-1]",
+        "n_events": len(primary),
+        "mean": float(np.nanmean(flat)) if len(fin) else math.nan,
+        "gt_50pct": int((flat > STALE_WINDOW_SHARES[0]).sum()),
+        "gt_90pct": int((flat > STALE_WINDOW_SHARES[1]).sum()),
+        "worst": [{"date": primary["date"].iloc[i], "ticker": primary["ticker"].iloc[i],
+                   "flat_share": float(flat[i]), "z": float(primary["z"].iloc[i])} for i in worst_idx],
+    }
+
     criteria = _criteria(primary_stat, excess, wf["oos"], plc_gross, subs, sharpe)
     verdict = "PASS" if all(c["passed"] for c in criteria) else "FAIL"
     prereg = cfg.root / "docs" / "PREREGISTRATION.md"
@@ -467,6 +508,7 @@ def run(panel: Panel | None = None, dec: Decomposition | None = None, *, members
             "up": _horizon_table(up, ("abn", "net_abn"), "up z >= +3"),
             "threshold_grid": grid,
             "factors": factors,
+            "stale_windows": stale_windows,
             "news": news_res,
         },
         "missing_exits": _missing_exits(primary, plc),

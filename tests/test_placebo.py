@@ -159,3 +159,65 @@ def test_rejects_event_dates_outside_panel():
     ev.loc[0, "date"] = pd.Timestamp("1990-01-01")
     with pytest.raises(ValueError):
         placebo_events(ev, panel, dec)
+
+
+def test_reuse_draws_each_candidate_floor_or_ceil_times():
+    panel, dec = _world()
+    d = panel.dates
+    panel.member.loc[:, "CCC"] = False
+    cand = [200, 250, 300]
+    panel.member.loc[d[cand], "CCC"] = True
+    # Placebo days must lie inside the span of real event dates, so add a late event to open the range.
+    ev = _events(panel, dec, [(d[100], "CCC"), (d[380], "AAA")])
+    need = 5
+    pl = placebo_events(ev, panel, dec, n_per_event=need, exclude_window=5, seed=3)
+    ccc = pl[pl["ticker"] == "CCC"]
+    assert len(ccc) == need
+    counts = ccc["date"].value_counts()
+    assert set(counts.index) <= set(d[cand])
+    assert set(counts.to_numpy()) <= {need // len(cand), -(-need // len(cand))}
+    again = placebo_events(ev, panel, dec, n_per_event=need, exclude_window=5, seed=3)
+    pd.testing.assert_frame_equal(pl, again)
+
+
+def test_n_per_event_zero_returns_empty_frame_with_exact_columns():
+    panel, dec = _world()
+    ev = _events(panel, dec, _picks(panel))
+    pl = placebo_events(ev, panel, dec, n_per_event=0)
+    assert pl.empty
+    assert list(pl.columns) == EVENT_COLUMNS + ["placebo_of"]
+
+
+def test_non_finite_returns_make_a_day_ineligible():
+    idx = pd.bdate_range("2010-01-04", periods=6)
+    features = pd.DataFrame(1.0, index=idx, columns=["AAA", "BBB"])
+    prices = pd.DataFrame(100.0, index=idx, columns=["AAA", "BBB"])
+    panel = Panel(close=prices, open=prices.copy(), volume=pd.DataFrame(1e6, index=idx, columns=features.columns),
+                  member=pd.DataFrame(True, index=idx, columns=features.columns),
+                  etf_close=pd.DataFrame(index=idx), etf_open=pd.DataFrame(index=idx), raw_close=prices.copy())
+    dec = Decomposition(stock_ret=features.copy(), mkt_ret=pd.Series(0.01, index=idx),
+                        sector=pd.DataFrame("XLK", index=idx, columns=features.columns),
+                        sec_ret=features.copy(), alpha=features.copy(), beta_mkt=features.copy(),
+                        beta_sec=features.copy(), resid=features.copy(), sigma=features.copy(),
+                        z=features.copy(), tot_sigma=features.copy(), vol_z=features.copy())
+    ev = pd.DataFrame({"date": [idx[0], idx[5]], "ticker": ["AAA", "BBB"], "pos": [0, 5], "z": [1.0, 1.0],
+                       "resid": [0.0, 0.0], "ret": [0.0, 0.0], "mkt_ret": [0.01, 0.01], "sec_ret": [0.0, 0.0],
+                       "sector": ["XLK", "XLK"], "vol_z": [0.0, 0.0], "alpha": [0.0, 0.0],
+                       "beta_mkt": [1.0, 1.0], "beta_sec": [0.5, 0.5], "sigma": [0.01, 0.01],
+                       "tot_sigma": [0.02, 0.02], "price": [100.0, 100.0]}, columns=EVENT_COLUMNS)
+    # Placebo days must lie inside the span of real event dates, so the events bracket the panel.
+    base = eligible_days(ev, panel, dec, exclude_window=0)
+    assert base["AAA"].tolist() == [False, True, True, True, True, True]
+    assert base["BBB"].tolist() == [True, True, True, True, True, False]
+
+    dec.mkt_ret = dec.mkt_ret.copy()
+    dec.mkt_ret.iloc[3] = np.nan
+    no_mkt = eligible_days(ev, panel, dec, exclude_window=0)
+    assert not no_mkt["AAA"].iloc[3] and not no_mkt["BBB"].iloc[3]
+    assert no_mkt["BBB"].iloc[2] and no_mkt["BBB"].iloc[4]
+
+    dec.mkt_ret.iloc[3] = 0.01
+    dec.sec_ret = dec.sec_ret.copy()
+    dec.sec_ret.iloc[2, 1] = np.nan
+    no_sec = eligible_days(ev, panel, dec, exclude_window=0)
+    assert not no_sec["BBB"].iloc[2] and no_sec["AAA"].iloc[2]

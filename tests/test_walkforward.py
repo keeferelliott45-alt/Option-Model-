@@ -119,6 +119,48 @@ def test_min_n_and_ties():
     assert oos.empty and {"config", "split_test_start", "m"} <= set(oos.columns)
 
 
+def test_splits_have_equal_fit_window_lengths():
+    splits = make_splits(T("2000-01-31"), T("2003-03-01"), fit_years=2, test_months=6)
+    assert len(splits) > 2
+    # Equal in months, not raw days: a month-end anchor shifts Feb 29/28 inside the window.
+    for a, b in zip(splits, splits[1:]):
+        assert a.fit_end == a.fit_start + pd.DateOffset(months=24)
+        assert b.fit_end == b.fit_start + pd.DateOffset(months=24)
+
+
+def test_test_window_end_date_belongs_to_next_split():
+    splits = make_splits(T("2000-01-01"), T("2003-03-01"), fit_years=2, test_months=6)
+    boundary = splits[0].test_end
+    assert boundary == splits[1].test_start
+    dates = pd.bdate_range("2000-01-03", "2001-06-30")
+    df = pd.DataFrame({"date": dates, "exit_date": dates + pd.Timedelta(days=1),
+                       "m": np.random.default_rng(0).normal(0.01, 0.02, len(dates))})
+    edge = pd.DataFrame({"date": [boundary], "exit_date": [boundary + pd.Timedelta(days=1)], "m": [0.02]})
+    oos, choices = walk_forward({"x": pd.concat([df, edge], ignore_index=True)}, "m", "exit_date", splits,
+                                min_n=5)
+    this = oos[oos["split_test_start"] == splits[0].test_start]
+    nxt = oos[oos["split_test_start"] == splits[1].test_start]
+    assert choices.loc[0, "test_n"] == 0 and choices.loc[1, "test_n"] == 1
+    assert not (this["date"] == boundary).any()
+    assert (nxt["date"] == boundary).sum() == 1
+
+
+def test_event_realised_before_later_test_start_enters_that_fit_window():
+    s0 = Split(T("2000-01-01"), T("2002-01-01"), T("2002-01-01"), T("2002-07-01"))
+    s1 = Split(T("2000-07-01"), T("2002-07-01"), T("2002-07-01"), T("2003-01-01"))
+    dates = pd.bdate_range("2000-07-03", "2000-12-29")
+    rng = np.random.default_rng(1)
+    base = pd.DataFrame({"date": dates, "exit_date": dates + pd.Timedelta(days=1),
+                         "m": rng.normal(0.003, 0.01, len(dates))})
+    # Both sit in s0's test window; only the one realised before s1's test start may inform s1's fit.
+    early = pd.DataFrame({"date": [T("2002-02-15")], "exit_date": [T("2002-03-01")], "m": [0.5]})
+    late = pd.DataFrame({"date": [T("2002-02-20")], "exit_date": [T("2002-08-01")], "m": [0.5]})
+    ev = pd.concat([base, early, late], ignore_index=True)
+    _, choices = walk_forward({"x": ev}, "m", "exit_date", [s0, s1], min_n=10)
+    assert choices.loc[0, "fit_n"] == len(base)
+    assert choices.loc[1, "fit_n"] == len(base) + 1
+
+
 def test_rejects_holdout_rows():
     h = holdout.holdout_start()
     split = Split(h - pd.DateOffset(years=2), h, h, h + pd.DateOffset(months=6))
