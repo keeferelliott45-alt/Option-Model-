@@ -1,0 +1,2057 @@
+{
+  "verdict": "FAIL",
+  "run_invalid": true,
+  "criteria": [
+    {
+      "id": "1",
+      "criterion": "Event level: mean net abnormal 15d return",
+      "value": -0.00391919989218731,
+      "ci": [
+        -0.00627629092530481,
+        -0.0019619176661222325
+      ],
+      "n": 16055,
+      "threshold": "mean > 0 and 95% CI lower bound > 0 (n >= 30 and >= 30 effective month clusters)",
+      "passed": false
+    },
+    {
+      "id": "1b",
+      "criterion": "Excess over placebo (events minus placebo, month clusters resampled jointly)",
+      "value": -0.0013695964596004773,
+      "ci": [
+        -0.0037198734115991665,
+        0.000618325894521006
+      ],
+      "n": 31942,
+      "threshold": "difference > 0 and 95% CI lower bound > 0 (n >= 30 and >= 30 effective month clusters)",
+      "passed": false
+    },
+    {
+      "id": "2",
+      "criterion": "Walk-forward OUT-OF-SAMPLE mean net abnormal 15d return",
+      "value": -0.0042485218350499145,
+      "ci": [
+        -0.006903492559754413,
+        -0.0018065877541877564
+      ],
+      "n": 11920,
+      "threshold": "mean > 0 and 95% CI lower bound > 0 (n >= 30 and >= 30 effective month clusters)",
+      "passed": false
+    },
+    {
+      "id": "3",
+      "criterion": "Placebo: mean abnormal 15d return on random non-event member days (before the fixed round-trip cost)",
+      "value": -0.0015496034325868317,
+      "ci": [
+        -0.002686100380319252,
+        -0.00041711698968221827
+      ],
+      "n": 15887,
+      "threshold": "95% CI includes 0",
+      "passed": false
+    },
+    {
+      "id": "4",
+      "criterion": "Stability: sub-periods with a positive mean",
+      "value": 0,
+      "ci": null,
+      "n": 16055,
+      "threshold": ">= 2 of 3",
+      "passed": false
+    },
+    {
+      "id": "5",
+      "criterion": "Plausibility: calendar-time portfolio annualized Sharpe",
+      "value": -0.9743041297568504,
+      "ci": null,
+      "n": null,
+      "threshold": "< 2.0",
+      "passed": true
+    }
+  ],
+  "meta": {
+    "run_utc": "2026-10-23T14:56:21Z",
+    "prereg_path": "C:\\Users\\keefe\\projects\\Option-Model-\\docs\\PREREGISTRATION.md",
+    "prereg_sha256": "394b7d5371623754891e33327c5d2187067c430ae24d4608743a6d9de83e5658",
+    "provenance": {
+      "code_sha256": "409b652ece286bbf4ff6393091cd526baebc094ad45248dd4283f9292b71ac99",
+      "git_head": "10d6b3393e8f3ece6ea581624b942483fdb8af53",
+      "git_status": "clean",
+      "uncommitted": []
+    },
+    "readings": [
+      "Criterion 3 is judged on the placebo's abnormal 15d return BEFORE the fixed 10 bp round-trip cost (a constant cost would push any clean placebo below zero).",
+      "'Date-clustered' CIs resample calendar-month clusters (M), 2000 percentile-bootstrap replications.",
+      "Walk-forward: on each fit window the threshold with the highest i.i.d. t-score among those with >= 30 purged fit events is chosen; a window where none qualifies adds no test events. Purged = the fit event's 15d exit date falls before the test window opens.",
+      "Same-ticker events within 15 trading days of the last kept event are suppressed.",
+      "Criterion 4: at least 2 of the 3 sub-periods have a positive mean; a sub-period with no events counts as not positive.",
+      "Criteria 1, 1b and 2 also require n >= 30 and >= 30 effective month clusters: a low-confidence estimate never passes.",
+      "Placebo: the same tickers, one draw per event, from member days with finite model inputs and as-traded price >= $5, inside the events' date span, excluding each real event day and the 15 days after it. Days BEFORE an event are not excluded: that would keep only placebo windows with no future drop in them (lookahead).",
+      "Entries that are not real t+1 opens are missing data (volume[t+1] == 0 or as-traded open[t+1] == close[t]), for events and placebo alike; they are counted by year and the unfiltered mean is reported as a sensitivity row.",
+      "Events or placebo days whose stock or ETF price is missing at entry or exit are excluded from every mean and counted; they are never booked as losses or gains.",
+      "Placebo drift diagnostic (placebo abnormal return minus 15 x the ticker's mean daily abnormal return over the development window) is reported only. It does not change criterion 3 or the run's validity."
+    ],
+    "readings_sha256": "2213957ff2e78ec2e18480b55444f1eb313d9ff59924083bc3a35494724d95a9",
+    "data_first_date": "1998-07-02T00:00:00",
+    "data_last_date": "2025-10-22T00:00:00",
+    "dev_start": "2000-01-03T00:00:00",
+    "dev_end": "2025-10-22T00:00:00",
+    "holdout_start": "2025-10-23T00:00:00",
+    "holdout_unlocked": false,
+    "n_tickers": 695,
+    "n_dev_days": 6491,
+    "entry": "next_open",
+    "primary_z": -3.0,
+    "primary_horizon": 15,
+    "metric": "net_abn_15",
+    "cost_bps_per_side": 5.0,
+    "n_events_by_z": {
+      "-2.5": 25267,
+      "-3.0": 16782,
+      "-4.0": 8943
+    }
+  },
+  "params": {
+    "BETA_MIN_OBS": {
+      "value": 60,
+      "source": "convention",
+      "layer": "L2",
+      "rationale": "Minimum valid days inside the beta window before a fit is trusted."
+    },
+    "BETA_WINDOW": {
+      "value": 90,
+      "source": "theory",
+      "layer": "L2",
+      "rationale": "Thesis: rolling 60-90d betas; upper end for estimate stability."
+    },
+    "BOOTSTRAP_REPS": {
+      "value": 2000,
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "Cluster-bootstrap replications for confidence intervals."
+    },
+    "CI_LEVEL": {
+      "value": 0.95,
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "Two-sided confidence level."
+    },
+    "CLUSTER_FREQ": {
+      "value": "M",
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "Calendar-month date clusters: wider than the 15d primary horizon, so overlapping forward windows and crash-clustered events mostly share a cluster."
+    },
+    "COST_BPS_PER_SIDE": {
+      "value": 5.0,
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "Conservative half-spread + slippage for S&P 500 names, per side."
+    },
+    "ENTRY": {
+      "value": "next_open",
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "Signal is known at close t; first tradable price is the t+1 open."
+    },
+    "EVENT_COOLDOWN": {
+      "value": 15,
+      "source": "convention",
+      "layer": "L2",
+      "rationale": "Suppress same-ticker events inside the primary horizon to avoid double counting."
+    },
+    "EVENT_Z_GRID": {
+      "value": [
+        -2.5,
+        -3.0,
+        -4.0
+      ],
+      "source": "theory",
+      "layer": "L2",
+      "rationale": "Only thresholds the walk-forward selector may choose between."
+    },
+    "EVENT_Z_THRESHOLD": {
+      "value": -3.0,
+      "source": "theory",
+      "layer": "L2",
+      "rationale": "Pre-registered: 3-sigma residual drop = 'large unexplained move'."
+    },
+    "EXPANDING_MIN_OBS": {
+      "value": 252,
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "Minimum history before an expanding-window quantile is defined."
+    },
+    "FACTOR_N_BUCKETS": {
+      "value": 3,
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "Terciles for one-factor-at-a-time tests: two cut points, the fewest that still separate high from low."
+    },
+    "FDR_Q": {
+      "value": 0.1,
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "Benjamini-Hochberg false-discovery rate across one-factor-at-a-time tests."
+    },
+    "HORIZONS": {
+      "value": [
+        1,
+        5,
+        15,
+        30
+      ],
+      "source": "theory",
+      "layer": "L2/L4",
+      "rationale": "Thesis: forward returns at 1, 5, 15, 30 trading days."
+    },
+    "MACRO_FFILL_LIMIT": {
+      "value": 3,
+      "source": "convention",
+      "layer": "L1",
+      "rationale": "Bridge holiday-calendar mismatches between sources only; longer gaps stay NaN so stale macro is never used."
+    },
+    "MACRO_START_YEAR": {
+      "value": 1998,
+      "source": "convention",
+      "layer": "L1",
+      "rationale": "Two years of warm-up before dev_start (2000) so trailing macro features are defined from day one."
+    },
+    "MIN_EFFECTIVE_CLUSTERS": {
+      "value": 30,
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "Kish effective number of date clusters, (sum c_g)^2 / sum c_g^2, below which cluster-robust CIs and p-values are anti-conservative (few-cluster guidance of ~20-50, Cameron & Miller 2015); such results are flagged low-confidence, matching the 30-instance rule."
+    },
+    "MIN_PRICE": {
+      "value": 5.0,
+      "source": "convention",
+      "layer": "L2",
+      "rationale": "Exclude sub-$5 prints where spreads and tick size dominate returns."
+    },
+    "MIN_SAMPLE_FINDING": {
+      "value": 30,
+      "source": "theory",
+      "layer": "backtest",
+      "rationale": "Thesis: under ~30 instances is low-confidence, not a finding."
+    },
+    "PANEL_WARMUP_DAYS": {
+      "value": 550,
+      "source": "convention",
+      "layer": "data",
+      "rationale": "Calendar days loaded before dev_start: SECTOR_WINDOW + BETA_WINDOW = 342 trading days (~495 calendar days) of warm-up plus a holiday buffer."
+    },
+    "PRIMARY_HORIZON": {
+      "value": 15,
+      "source": "theory",
+      "layer": "L2",
+      "rationale": "Pre-registered primary horizon (thesis worked example uses 15d)."
+    },
+    "RANDOM_SEED": {
+      "value": 20261023,
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "Fixed seed for reproducibility."
+    },
+    "REUSE_TOLERANCE_DAYS": {
+      "value": 7,
+      "source": "convention",
+      "layer": "data",
+      "rationale": "A member cannot predate its first trade: a price history starting more than ~5 trading days after a membership spell begins marks the symbol as reused by another company, and that spell's prices are dropped."
+    },
+    "SECTOR_REASSIGN_FREQ": {
+      "value": "ME",
+      "source": "convention",
+      "layer": "L2",
+      "rationale": "Sector assignment refreshed month-end using only prior data."
+    },
+    "SECTOR_WINDOW": {
+      "value": 252,
+      "source": "convention",
+      "layer": "L2",
+      "rationale": "One trading year of history to pick each stock's sector ETF."
+    },
+    "SEC_NEWS_WINDOW": {
+      "value": 1,
+      "source": "convention",
+      "layer": "L2",
+      "rationale": "News effective the prior session can still drive day-t moves, so day t is flagged for effective dates t and t-1."
+    },
+    "STABILITY_MIN_SUBPERIODS": {
+      "value": 2,
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "Pre-registered: the mean must have H1's (positive) sign in at least 2 of the 3 sub-periods."
+    },
+    "STALE_OPEN_RULE": {
+      "value": "volume[t+1] == 0 or as-traded open[t+1] == close[t]",
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "An entry print that is not a real t+1 opening trade (no volume, or a free-data open copied from the prior close, ~10-15% of post-drop S&P bars before 2008 vs ~1-2% after) is missing data, not a fill; using it would silently turn the pre-registered next-open entry into a close entry, which favours H1."
+    },
+    "STALE_WINDOW_SHARES": {
+      "value": [
+        0.5,
+        0.9
+      ],
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "Shares of exactly-zero returns in a fit window above which the window is mostly stale prices (halt, illiquidity) and the rolling sigma is deflated, so z = resid/sigma can spike and manufacture fake events."
+    },
+    "SUBPERIODS": {
+      "value": [
+        [
+          2000,
+          2008
+        ],
+        [
+          2009,
+          2016
+        ],
+        [
+          2017,
+          2025
+        ]
+      ],
+      "source": "convention",
+      "layer": "backtest",
+      "rationale": "Pre-registered stability split (criterion 4): three ~8-year calendar blocks fixed before any result."
+    },
+    "SUSPICIOUS_SHARPE": {
+      "value": 2.0,
+      "source": "theory",
+      "layer": "backtest",
+      "rationale": "Thesis: Sharpe above ~2-3 is treated as a probable bug until proven otherwise."
+    },
+    "VOLUME_Z_WINDOW": {
+      "value": 20,
+      "source": "theory",
+      "layer": "L2",
+      "rationale": "Thesis: volume vs 20-day average."
+    },
+    "WF_FIT_YEARS": {
+      "value": 2,
+      "source": "theory",
+      "layer": "backtest",
+      "rationale": "Thesis: fit on rolling ~2 years."
+    },
+    "WF_TEST_MONTHS": {
+      "value": 6,
+      "source": "theory",
+      "layer": "backtest",
+      "rationale": "Thesis: test on next 3-6 months."
+    }
+  },
+  "primary": {
+    "label": "primary net_abn_15",
+    "n": 16055,
+    "mean": -0.00391919989218731,
+    "ci_lo": -0.00627629092530481,
+    "ci_hi": -0.0019619176661222325,
+    "se": 0.0011021405542309705,
+    "p_value": 0.0003765595670081979,
+    "n_clusters": 310,
+    "n_eff_clusters": 204.14496292312896,
+    "median": -0.0009391721045633452,
+    "win_rate": 0.4918716910619745,
+    "win_lo": 0.484141426007369,
+    "win_hi": 0.4996058448857851,
+    "low_confidence": false,
+    "gross": {
+      "label": "primary abn_15",
+      "n": 16055,
+      "mean": -0.0029191998921873096,
+      "ci_lo": -0.0052762909253048105,
+      "ci_hi": -0.0009619176661222311,
+      "se": 0.0011021405542309707,
+      "p_value": 0.008081065534661477,
+      "n_clusters": 310,
+      "n_eff_clusters": 204.14496292312896,
+      "median": 6.082789543665479e-05,
+      "win_rate": 0.5007162877608222,
+      "win_lo": 0.4929828932278062,
+      "win_hi": 0.5084493396053642,
+      "low_confidence": false
+    },
+    "concentration": {
+      "n_months": 310,
+      "top_months": {
+        "2020-03": 393,
+        "2025-04": 184,
+        "2008-10": 182,
+        "2018-10": 160,
+        "2020-11": 138
+      },
+      "top_share": 0.06298414968418543
+    }
+  },
+  "horizons": [
+    {
+      "horizon": 1,
+      "kind": "raw",
+      "label": "primary raw_1",
+      "n": 16105,
+      "mean": -0.00120759791483868,
+      "ci_lo": -0.0018030488964304713,
+      "ci_hi": -0.0006161714838254078,
+      "se": 0.0003043593578889894,
+      "p_value": 7.257831622218957e-05,
+      "n_clusters": 310,
+      "n_eff_clusters": 204.7374505366473,
+      "median": -0.0004394859815374087,
+      "win_rate": 0.48562558211735485,
+      "win_lo": 0.47791098038264906,
+      "win_hi": 0.4933470395572967,
+      "low_confidence": false
+    },
+    {
+      "horizon": 1,
+      "kind": "abn",
+      "label": "primary abn_1",
+      "n": 16105,
+      "mean": -0.0007146747553706546,
+      "ci_lo": -0.0011969451659034516,
+      "ci_hi": -0.00023263917175067353,
+      "se": 0.0002503224172313706,
+      "p_value": 0.004303452604469151,
+      "n_clusters": 310,
+      "n_eff_clusters": 204.7374505366473,
+      "median": -0.00013806895971489217,
+      "win_rate": 0.49562247749146227,
+      "win_lo": 0.4879025969859548,
+      "win_hi": 0.5033444458035321,
+      "low_confidence": false
+    },
+    {
+      "horizon": 1,
+      "kind": "net_abn",
+      "label": "primary net_abn_1",
+      "n": 16105,
+      "mean": -0.001714674755370655,
+      "ci_lo": -0.002196945165903451,
+      "ci_hi": -0.0012326391717506742,
+      "se": 0.0002503224172313706,
+      "p_value": 7.391973155856692e-12,
+      "n_clusters": 310,
+      "n_eff_clusters": 204.7374505366473,
+      "median": -0.001138068959714892,
+      "win_rate": 0.46799130704750075,
+      "win_lo": 0.46029355397912547,
+      "win_hi": 0.4757043262759157,
+      "low_confidence": false
+    },
+    {
+      "horizon": 5,
+      "kind": "raw",
+      "label": "primary raw_5",
+      "n": 16096,
+      "mean": -0.0014891546031849843,
+      "ci_lo": -0.006660438126442128,
+      "ci_hi": 0.002200443510480541,
+      "se": 0.0023481939358372087,
+      "p_value": 0.5259697572906863,
+      "n_clusters": 310,
+      "n_eff_clusters": 204.69045809427345,
+      "median": 0.001955022795213859,
+      "win_rate": 0.5192594433399602,
+      "win_lo": 0.5115372002700136,
+      "win_hi": 0.5269724957158632,
+      "low_confidence": false
+    },
+    {
+      "horizon": 5,
+      "kind": "abn",
+      "label": "primary abn_5",
+      "n": 16096,
+      "mean": -0.0019416958785386453,
+      "ci_lo": -0.0036540148025862034,
+      "ci_hi": -0.0006404735452103256,
+      "se": 0.0007844614938960657,
+      "p_value": 0.013316310885811705,
+      "n_clusters": 310,
+      "n_eff_clusters": 204.69045809427345,
+      "median": -0.0004730144525767841,
+      "win_rate": 0.4923583499005964,
+      "win_lo": 0.4846376969760561,
+      "win_hi": 0.5000826494553541,
+      "low_confidence": false
+    },
+    {
+      "horizon": 5,
+      "kind": "net_abn",
+      "label": "primary net_abn_5",
+      "n": 16096,
+      "mean": -0.002941695878538646,
+      "ci_lo": -0.004654014802586205,
+      "ci_hi": -0.001640473545210326,
+      "se": 0.0007844614938960662,
+      "p_value": 0.00017686578773404543,
+      "n_clusters": 310,
+      "n_eff_clusters": 204.69045809427345,
+      "median": -0.0014730144525767841,
+      "win_rate": 0.478006958250497,
+      "win_lo": 0.4702963010872394,
+      "win_hi": 0.4857281105934045,
+      "low_confidence": false
+    },
+    {
+      "horizon": 15,
+      "kind": "raw",
+      "label": "primary raw_15",
+      "n": 16055,
+      "mean": 0.001671720850800094,
+      "ci_lo": -0.0062243924055106585,
+      "ci_hi": 0.00857073619916557,
+      "se": 0.003688570417250045,
+      "p_value": 0.6503928764442848,
+      "n_clusters": 310,
+      "n_eff_clusters": 204.14496292312896,
+      "median": 0.00821214535092315,
+      "win_rate": 0.5533478667081906,
+      "win_lo": 0.5456460070393137,
+      "win_hi": 0.5610242035355031,
+      "low_confidence": false
+    },
+    {
+      "horizon": 15,
+      "kind": "abn",
+      "label": "primary abn_15",
+      "n": 16055,
+      "mean": -0.0029191998921873096,
+      "ci_lo": -0.0052762909253048105,
+      "ci_hi": -0.0009619176661222311,
+      "se": 0.0011021405542309707,
+      "p_value": 0.008081065534661477,
+      "n_clusters": 310,
+      "n_eff_clusters": 204.14496292312896,
+      "median": 6.082789543665479e-05,
+      "win_rate": 0.5007162877608222,
+      "win_lo": 0.4929828932278062,
+      "win_hi": 0.5084493396053642,
+      "low_confidence": false
+    },
+    {
+      "horizon": 15,
+      "kind": "net_abn",
+      "label": "primary net_abn_15",
+      "n": 16055,
+      "mean": -0.00391919989218731,
+      "ci_lo": -0.00627629092530481,
+      "ci_hi": -0.0019619176661222325,
+      "se": 0.0011021405542309705,
+      "p_value": 0.0003765595670081979,
+      "n_clusters": 310,
+      "n_eff_clusters": 204.14496292312896,
+      "median": -0.0009391721045633452,
+      "win_rate": 0.4918716910619745,
+      "win_lo": 0.484141426007369,
+      "win_hi": 0.4996058448857851,
+      "low_confidence": false
+    },
+    {
+      "horizon": 30,
+      "kind": "raw",
+      "label": "primary raw_30",
+      "n": 16000,
+      "mean": 0.006116531867764279,
+      "ci_lo": -0.0054013205084955775,
+      "ci_hi": 0.015917877343686118,
+      "se": 0.00548911251897045,
+      "p_value": 0.26514942976318534,
+      "n_clusters": 309,
+      "n_eff_clusters": 203.40739163391754,
+      "median": 0.014570345975022256,
+      "win_rate": 0.5656875,
+      "win_lo": 0.5579923495523726,
+      "win_hi": 0.5733511160404747,
+      "low_confidence": false
+    },
+    {
+      "horizon": 30,
+      "kind": "abn",
+      "label": "primary abn_30",
+      "n": 16000,
+      "mean": -0.004189887825583973,
+      "ci_lo": -0.007067569793156296,
+      "ci_hi": -0.0014878564280166613,
+      "se": 0.0014197660646801111,
+      "p_value": 0.003166326904574578,
+      "n_clusters": 309,
+      "n_eff_clusters": 203.40739163391754,
+      "median": -0.00016143197915621885,
+      "win_rate": 0.4993125,
+      "win_lo": 0.4915661643186741,
+      "win_hi": 0.507059165727452,
+      "low_confidence": false
+    },
+    {
+      "horizon": 30,
+      "kind": "net_abn",
+      "label": "primary net_abn_30",
+      "n": 16000,
+      "mean": -0.005189887825583975,
+      "ci_lo": -0.008067569793156294,
+      "ci_hi": -0.002487856428016661,
+      "se": 0.001419766064680111,
+      "p_value": 0.000256728449663065,
+      "n_clusters": 309,
+      "n_eff_clusters": 203.40739163391754,
+      "median": -0.0011614319791562189,
+      "win_rate": 0.4928125,
+      "win_lo": 0.4850685174364545,
+      "win_hi": 0.5005599330457743,
+      "low_confidence": false
+    }
+  ],
+  "calendar": {
+    "newey_west": {
+      "mean": -0.0003033246915658464,
+      "se": 6.027291661750572e-05,
+      "t": -5.0325205513241835,
+      "p_value": 4.840726940530067e-07,
+      "n": 6491,
+      "lags": 15
+    },
+    "sharpe": -0.9743041297568504,
+    "suspicious": false,
+    "n_days": 6491,
+    "active_days": 6489,
+    "mean_positions": 37.11280628756357
+  },
+  "walkforward": {
+    "oos": {
+      "label": "walk-forward OOS net_abn_15",
+      "n": 11920,
+      "mean": -0.0042485218350499145,
+      "ci_lo": -0.006903492559754413,
+      "ci_hi": -0.0018065877541877564,
+      "se": 0.0013358797587789415,
+      "p_value": 0.0014711374779801827,
+      "n_clusters": 286,
+      "n_eff_clusters": 164.49640296098713,
+      "median": -0.0011969624112924604,
+      "win_rate": 0.48884228187919465,
+      "win_lo": 0.47987361606585416,
+      "win_hi": 0.49781813697207095,
+      "low_confidence": false
+    },
+    "n_splits": 48,
+    "choices": [
+      {
+        "test_start": "2002-01-03T00:00:00",
+        "test_end": "2002-07-03T00:00:00",
+        "chosen": "z-2.5",
+        "fit_n": 1013,
+        "fit_score": 0.16723142440586783,
+        "test_n": 287
+      },
+      {
+        "test_start": "2002-07-03T00:00:00",
+        "test_end": "2003-01-03T00:00:00",
+        "chosen": "z-2.5",
+        "fit_n": 967,
+        "fit_score": -0.0182989950242445,
+        "test_n": 365
+      },
+      {
+        "test_start": "2003-01-03T00:00:00",
+        "test_end": "2003-07-03T00:00:00",
+        "chosen": "z-2.5",
+        "fit_n": 1133,
+        "fit_score": -0.21270367215511182,
+        "test_n": 214
+      },
+      {
+        "test_start": "2003-07-03T00:00:00",
+        "test_end": "2004-01-03T00:00:00",
+        "chosen": "z-2.5",
+        "fit_n": 1130,
+        "fit_score": 0.013238823781839751,
+        "test_n": 211
+      },
+      {
+        "test_start": "2004-01-03T00:00:00",
+        "test_end": "2004-07-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 335,
+        "fit_score": 0.5459533825431006,
+        "test_n": 53
+      },
+      {
+        "test_start": "2004-07-03T00:00:00",
+        "test_end": "2005-01-03T00:00:00",
+        "chosen": "z-3.0",
+        "fit_n": 632,
+        "fit_score": 0.9402352568677327,
+        "test_n": 174
+      },
+      {
+        "test_start": "2005-01-03T00:00:00",
+        "test_end": "2005-07-03T00:00:00",
+        "chosen": "z-2.5",
+        "fit_n": 896,
+        "fit_score": 1.2973209397126253,
+        "test_n": 238
+      },
+      {
+        "test_start": "2005-07-03T00:00:00",
+        "test_end": "2006-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 271,
+        "fit_score": 0.6691596492140595,
+        "test_n": 86
+      },
+      {
+        "test_start": "2006-01-03T00:00:00",
+        "test_end": "2006-07-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 301,
+        "fit_score": 0.8752766209600108,
+        "test_n": 84
+      },
+      {
+        "test_start": "2006-07-03T00:00:00",
+        "test_end": "2007-01-03T00:00:00",
+        "chosen": "z-2.5",
+        "fit_n": 1044,
+        "fit_score": 1.1629676941854603,
+        "test_n": 282
+      },
+      {
+        "test_start": "2007-01-03T00:00:00",
+        "test_end": "2007-07-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 335,
+        "fit_score": -0.13573186533780746,
+        "test_n": 83
+      },
+      {
+        "test_start": "2007-07-03T00:00:00",
+        "test_end": "2008-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 336,
+        "fit_score": -1.707230394841515,
+        "test_n": 157
+      },
+      {
+        "test_start": "2008-01-03T00:00:00",
+        "test_end": "2008-07-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 405,
+        "fit_score": -2.2035538031093798,
+        "test_n": 124
+      },
+      {
+        "test_start": "2008-07-03T00:00:00",
+        "test_end": "2009-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 436,
+        "fit_score": -0.8895126205816272,
+        "test_n": 289
+      },
+      {
+        "test_start": "2009-01-03T00:00:00",
+        "test_end": "2009-07-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 647,
+        "fit_score": -1.0017125022233135,
+        "test_n": 61
+      },
+      {
+        "test_start": "2009-07-03T00:00:00",
+        "test_end": "2010-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 630,
+        "fit_score": -0.6979370517229633,
+        "test_n": 74
+      },
+      {
+        "test_start": "2010-01-03T00:00:00",
+        "test_end": "2010-07-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 541,
+        "fit_score": -0.8379210150952856,
+        "test_n": 107
+      },
+      {
+        "test_start": "2010-07-03T00:00:00",
+        "test_end": "2011-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 524,
+        "fit_score": -1.297359479051889,
+        "test_n": 139
+      },
+      {
+        "test_start": "2011-01-03T00:00:00",
+        "test_end": "2011-07-03T00:00:00",
+        "chosen": "z-3.0",
+        "fit_n": 780,
+        "fit_score": -1.6206540509098277,
+        "test_n": 260
+      },
+      {
+        "test_start": "2011-07-03T00:00:00",
+        "test_end": "2012-01-03T00:00:00",
+        "chosen": "z-2.5",
+        "fit_n": 1361,
+        "fit_score": -1.9949260837027498,
+        "test_n": 526
+      },
+      {
+        "test_start": "2012-01-03T00:00:00",
+        "test_end": "2012-07-03T00:00:00",
+        "chosen": "z-2.5",
+        "fit_n": 1678,
+        "fit_score": -1.495736587792772,
+        "test_n": 427
+      },
+      {
+        "test_start": "2012-07-03T00:00:00",
+        "test_end": "2013-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 580,
+        "fit_score": -1.6630913556024187,
+        "test_n": 162
+      },
+      {
+        "test_start": "2013-01-03T00:00:00",
+        "test_end": "2013-07-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 609,
+        "fit_score": -1.4375930050146641,
+        "test_n": 150
+      },
+      {
+        "test_start": "2013-07-03T00:00:00",
+        "test_end": "2014-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 616,
+        "fit_score": -1.2068248816285443,
+        "test_n": 136
+      },
+      {
+        "test_start": "2014-01-03T00:00:00",
+        "test_end": "2014-07-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 571,
+        "fit_score": -0.6642804941511348,
+        "test_n": 141
+      },
+      {
+        "test_start": "2014-07-03T00:00:00",
+        "test_end": "2015-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 577,
+        "fit_score": -1.3431535454119767,
+        "test_n": 203
+      },
+      {
+        "test_start": "2015-01-03T00:00:00",
+        "test_end": "2015-07-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 619,
+        "fit_score": -0.7323055122554298,
+        "test_n": 151
+      },
+      {
+        "test_start": "2015-07-03T00:00:00",
+        "test_end": "2016-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 620,
+        "fit_score": -0.5226705419983207,
+        "test_n": 232
+      },
+      {
+        "test_start": "2016-01-03T00:00:00",
+        "test_end": "2016-07-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 714,
+        "fit_score": -0.003839910539475123,
+        "test_n": 187
+      },
+      {
+        "test_start": "2016-07-03T00:00:00",
+        "test_end": "2017-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 745,
+        "fit_score": 1.1387093968287048,
+        "test_n": 260
+      },
+      {
+        "test_start": "2017-01-03T00:00:00",
+        "test_end": "2017-07-03T00:00:00",
+        "chosen": "z-3.0",
+        "fit_n": 1467,
+        "fit_score": 0.23434495755977938,
+        "test_n": 306
+      },
+      {
+        "test_start": "2017-07-03T00:00:00",
+        "test_end": "2018-01-03T00:00:00",
+        "chosen": "z-3.0",
+        "fit_n": 1483,
+        "fit_score": -0.4346417360425698,
+        "test_n": 447
+      },
+      {
+        "test_start": "2018-01-03T00:00:00",
+        "test_end": "2018-07-03T00:00:00",
+        "chosen": "z-3.0",
+        "fit_n": 1512,
+        "fit_score": -1.0015609495512101,
+        "test_n": 415
+      },
+      {
+        "test_start": "2018-07-03T00:00:00",
+        "test_end": "2019-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 899,
+        "fit_score": -2.420422765771854,
+        "test_n": 279
+      },
+      {
+        "test_start": "2019-01-03T00:00:00",
+        "test_end": "2019-07-03T00:00:00",
+        "chosen": "z-3.0",
+        "fit_n": 1635,
+        "fit_score": -1.0354458398946984,
+        "test_n": 361
+      },
+      {
+        "test_start": "2019-07-03T00:00:00",
+        "test_end": "2020-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 926,
+        "fit_score": -0.25137296748922094,
+        "test_n": 220
+      },
+      {
+        "test_start": "2020-01-03T00:00:00",
+        "test_end": "2020-07-03T00:00:00",
+        "chosen": "z-3.0",
+        "fit_n": 1679,
+        "fit_score": -0.8662643581327801,
+        "test_n": 679
+      },
+      {
+        "test_start": "2020-07-03T00:00:00",
+        "test_end": "2021-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 1150,
+        "fit_score": -4.936261306758058,
+        "test_n": 165
+      },
+      {
+        "test_start": "2021-01-03T00:00:00",
+        "test_end": "2021-07-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 1033,
+        "fit_score": -5.217922147956214,
+        "test_n": 125
+      },
+      {
+        "test_start": "2021-07-03T00:00:00",
+        "test_end": "2022-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 973,
+        "fit_score": -5.5515452546968405,
+        "test_n": 237
+      },
+      {
+        "test_start": "2022-01-03T00:00:00",
+        "test_end": "2022-07-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 989,
+        "fit_score": -5.465097715971045,
+        "test_n": 248
+      },
+      {
+        "test_start": "2022-07-03T00:00:00",
+        "test_end": "2023-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 761,
+        "fit_score": -1.4430200902859345,
+        "test_n": 247
+      },
+      {
+        "test_start": "2023-01-03T00:00:00",
+        "test_end": "2023-07-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 849,
+        "fit_score": -0.4600770772695672,
+        "test_n": 225
+      },
+      {
+        "test_start": "2023-07-03T00:00:00",
+        "test_end": "2024-01-03T00:00:00",
+        "chosen": "z-4.0",
+        "fit_n": 941,
+        "fit_score": -1.3235266098408034,
+        "test_n": 275
+      },
+      {
+        "test_start": "2024-01-03T00:00:00",
+        "test_end": "2024-07-03T00:00:00",
+        "chosen": "z-3.0",
+        "fit_n": 1808,
+        "fit_score": -0.6480916770801133,
+        "test_n": 458
+      },
+      {
+        "test_start": "2024-07-03T00:00:00",
+        "test_end": "2025-01-03T00:00:00",
+        "chosen": "z-3.0",
+        "fit_n": 1751,
+        "fit_score": -1.9149266755034473,
+        "test_n": 516
+      },
+      {
+        "test_start": "2025-01-03T00:00:00",
+        "test_end": "2025-07-03T00:00:00",
+        "chosen": "z-3.0",
+        "fit_n": 1857,
+        "fit_score": -4.211900551724466,
+        "test_n": 594
+      },
+      {
+        "test_start": "2025-07-03T00:00:00",
+        "test_end": "2025-10-23T00:00:00",
+        "chosen": "z-3.0",
+        "fit_n": 2010,
+        "fit_score": -1.9547960180118655,
+        "test_n": 260
+      }
+    ],
+    "chosen_counts": {
+      "z-4.0": 29,
+      "z-3.0": 11,
+      "z-2.5": 8
+    },
+    "oos_start": "2002-01-03T00:00:00",
+    "oos_end": "2025-10-01T00:00:00"
+  },
+  "placebo": {
+    "net": {
+      "label": "placebo net_abn_15",
+      "n": 15887,
+      "mean": -0.002549603432586833,
+      "ci_lo": -0.003686100380319252,
+      "ci_hi": -0.0014171169896822183,
+      "se": 0.0005838232366575518,
+      "p_value": 1.2591797243426817e-05,
+      "n_clusters": 310,
+      "n_eff_clusters": 277.06953392663274,
+      "median": -0.0002272172369411126,
+      "win_rate": 0.4972619122553031,
+      "win_lo": 0.48948868870077883,
+      "win_hi": 0.5050364596228359,
+      "low_confidence": false
+    },
+    "gross": {
+      "label": "placebo abn_15",
+      "n": 15887,
+      "mean": -0.0015496034325868317,
+      "ci_lo": -0.002686100380319252,
+      "ci_hi": -0.00041711698968221827,
+      "se": 0.0005838232366575517,
+      "p_value": 0.007948870400777568,
+      "n_clusters": 310,
+      "n_eff_clusters": 277.06953392663274,
+      "median": 0.0007727827630588874,
+      "win_rate": 0.5096619877887582,
+      "win_lo": 0.5018871013497181,
+      "win_hi": 0.5174322028416651,
+      "low_confidence": false
+    },
+    "excess": {
+      "diff": -0.0013695964596004773,
+      "lo": -0.0037198734115991665,
+      "hi": 0.000618325894521006,
+      "se": 0.0010900534857065539,
+      "p_value": 0.20895327625779903,
+      "n_high": 16055,
+      "n_low": 15887,
+      "mean_high": -0.00391919989218731,
+      "mean_low": -0.002549603432586833,
+      "n_clusters": 310,
+      "n_eff_high": 204.14496292312896,
+      "n_eff_low": 277.06953392663274
+    },
+    "n_per_event": 1,
+    "drift_adjusted": {
+      "label": "placebo abn_15 minus 15 x ticker mean daily abnormal return",
+      "n": 15887,
+      "mean": -7.690758376046559e-05,
+      "ci_lo": -0.001195185240903425,
+      "ci_hi": 0.001058092902344562,
+      "se": 0.0005755265273031381,
+      "p_value": 0.8936951962096166,
+      "n_clusters": 310,
+      "n_eff_clusters": 277.06953392663274,
+      "median": 0.001552134305379439,
+      "win_rate": 0.5156417196449927,
+      "win_lo": 0.5078677404484849,
+      "win_hi": 0.523408136369487,
+      "low_confidence": false
+    }
+  },
+  "subperiods": [
+    {
+      "period": "2000-2008",
+      "label": "2000-2008",
+      "n": 3546,
+      "mean": -0.004058412295894221,
+      "ci_lo": -0.007924803673992604,
+      "ci_hi": -0.0002661490885999367,
+      "se": 0.0019681083432270853,
+      "p_value": 0.03919937319136615,
+      "n_clusters": 108,
+      "n_eff_clusters": 67.7923010567177,
+      "median": 0.0008742387448236102,
+      "win_rate": 0.5062041737168641,
+      "win_lo": 0.48975070510744073,
+      "win_hi": 0.5226442146405013,
+      "low_confidence": false
+    },
+    {
+      "period": "2009-2016",
+      "label": "2009-2016",
+      "n": 4622,
+      "mean": -0.0021567367860526126,
+      "ci_lo": -0.004232172402804008,
+      "ci_hi": 0.00010627973950981176,
+      "se": 0.0011067232017908804,
+      "p_value": 0.051324213688057924,
+      "n_clusters": 96,
+      "n_eff_clusters": 75.85120117028,
+      "median": -0.0009832822048799822,
+      "win_rate": 0.49112938122025096,
+      "win_lo": 0.47673038242348614,
+      "win_hi": 0.5055431129546055,
+      "low_confidence": false
+    },
+    {
+      "period": "2017-2025",
+      "label": "2017-2025",
+      "n": 7887,
+      "mean": -0.0048894620061736,
+      "ci_lo": -0.008893583461254722,
+      "ci_hi": -0.0013722078584960903,
+      "se": 0.0019310414888574303,
+      "p_value": 0.011340311158371546,
+      "n_clusters": 106,
+      "n_eff_clusters": 78.19335533138494,
+      "median": -0.0014605568659754728,
+      "win_rate": 0.4858628122226449,
+      "win_lo": 0.4748420475665566,
+      "win_hi": 0.49689734155135273,
+      "low_confidence": false
+    }
+  ],
+  "secondary": {
+    "close_entry": [
+      {
+        "horizon": 1,
+        "kind": "net_abn",
+        "label": "close entry net_abn_1",
+        "n": 16776,
+        "mean": -0.0017694765495511037,
+        "ci_lo": -0.0022802563917123744,
+        "ci_hi": -0.0012698321631233725,
+        "se": 0.00026217693868456755,
+        "p_value": 1.4869399117520084e-11,
+        "n_clusters": 310,
+        "n_eff_clusters": 209.51173167888297,
+        "median": -0.0011354918361417081,
+        "win_rate": 0.4672150691463996,
+        "win_lo": 0.4596735861526431,
+        "win_hi": 0.47477156324286784,
+        "low_confidence": false
+      },
+      {
+        "horizon": 5,
+        "kind": "net_abn",
+        "label": "close entry net_abn_5",
+        "n": 16767,
+        "mean": -0.0029645567340936506,
+        "ci_lo": -0.004688343149969455,
+        "ci_hi": -0.0017027131272900238,
+        "se": 0.0007773926330241311,
+        "p_value": 0.00013703398253352275,
+        "n_clusters": 310,
+        "n_eff_clusters": 209.4624184430929,
+        "median": -0.0015913039260919354,
+        "win_rate": 0.4770680503369714,
+        "win_lo": 0.46951396922057814,
+        "win_hi": 0.48463263684637364,
+        "low_confidence": false
+      },
+      {
+        "horizon": 15,
+        "kind": "net_abn",
+        "label": "close entry net_abn_15",
+        "n": 16726,
+        "mean": -0.00399223209585702,
+        "ci_lo": -0.006301007246446688,
+        "ci_hi": -0.0020607486856166024,
+        "se": 0.0010706822267426254,
+        "p_value": 0.00019248490184099585,
+        "n_clusters": 310,
+        "n_eff_clusters": 208.91793058847603,
+        "median": -0.0007027471190389498,
+        "win_rate": 0.49246681812746623,
+        "win_lo": 0.4848928456277862,
+        "win_hi": 0.500044250122925,
+        "low_confidence": false
+      },
+      {
+        "horizon": 30,
+        "kind": "net_abn",
+        "label": "close entry net_abn_30",
+        "n": 16669,
+        "mean": -0.005402797873490977,
+        "ci_lo": -0.008218643971660123,
+        "ci_hi": -0.002677450154968795,
+        "se": 0.001384238872993856,
+        "p_value": 9.497549477968168e-05,
+        "n_clusters": 309,
+        "n_eff_clusters": 208.20059465425607,
+        "median": -0.0014269294612336944,
+        "win_rate": 0.4911512388265643,
+        "win_lo": 0.48356496385071984,
+        "win_hi": 0.4987415913499276,
+        "low_confidence": false
+      }
+    ],
+    "bounce": {
+      "label": "close entry minus next-open entry",
+      "n": 16055,
+      "mean": 8.102195269070595e-06,
+      "ci_lo": -0.00028932967037218464,
+      "ci_hi": 0.00031278448329638716,
+      "se": 0.00015884134014284957,
+      "p_value": 0.9593190645458696,
+      "n_clusters": 310,
+      "n_eff_clusters": 204.14496292312896,
+      "median": 0.00018044438711162757,
+      "win_rate": 0.5131734662099035,
+      "win_lo": 0.5054397677204685,
+      "win_hi": 0.5209008622113163,
+      "low_confidence": false
+    },
+    "up": [
+      {
+        "horizon": 1,
+        "kind": "abn",
+        "label": "up z >= +3 abn_1",
+        "n": 15667,
+        "mean": -1.931297262645517e-05,
+        "ci_lo": -0.0005245238639542892,
+        "ci_hi": 0.0004310110532807482,
+        "se": 0.00023896110781059402,
+        "p_value": 0.9355846501347703,
+        "n_clusters": 310,
+        "n_eff_clusters": 211.76425487125732,
+        "median": -3.992080220654136e-05,
+        "win_rate": 0.4992659730644029,
+        "win_lo": 0.4914377807450606,
+        "win_hi": 0.5070945252539224,
+        "low_confidence": false
+      },
+      {
+        "horizon": 1,
+        "kind": "net_abn",
+        "label": "up z >= +3 net_abn_1",
+        "n": 15667,
+        "mean": -0.0010193129726264556,
+        "ci_lo": -0.0015245238639542895,
+        "ci_hi": -0.0005689889467192521,
+        "se": 0.00023896110781059397,
+        "p_value": 1.9936393013595365e-05,
+        "n_clusters": 310,
+        "n_eff_clusters": 211.76425487125732,
+        "median": -0.0010399208022065414,
+        "win_rate": 0.4668411310397651,
+        "win_lo": 0.4590381082389259,
+        "win_hi": 0.4746604105846963,
+        "low_confidence": false
+      },
+      {
+        "horizon": 5,
+        "kind": "abn",
+        "label": "up z >= +3 abn_5",
+        "n": 15650,
+        "mean": -0.0015215133222982484,
+        "ci_lo": -0.002780059978024873,
+        "ci_hi": -0.0004359337707752698,
+        "se": 0.0006071706035082313,
+        "p_value": 0.012213759415834346,
+        "n_clusters": 310,
+        "n_eff_clusters": 211.55005562503888,
+        "median": 7.354335160496966e-05,
+        "win_rate": 0.5011501597444089,
+        "win_lo": 0.4933172678853068,
+        "win_hi": 0.5089824871042082,
+        "low_confidence": false
+      },
+      {
+        "horizon": 5,
+        "kind": "net_abn",
+        "label": "up z >= +3 net_abn_5",
+        "n": 15650,
+        "mean": -0.002521513322298249,
+        "ci_lo": -0.0037800599780248743,
+        "ci_hi": -0.00143593377077527,
+        "se": 0.0006071706035082314,
+        "p_value": 3.283011686021602e-05,
+        "n_clusters": 310,
+        "n_eff_clusters": 211.55005562503888,
+        "median": -0.0009264566483950304,
+        "win_rate": 0.4852396166134185,
+        "win_lo": 0.4774140213692022,
+        "win_hi": 0.493072456265355,
+        "low_confidence": false
+      },
+      {
+        "horizon": 15,
+        "kind": "abn",
+        "label": "up z >= +3 abn_15",
+        "n": 15626,
+        "mean": -0.0038973626146459606,
+        "ci_lo": -0.006536026361404043,
+        "ci_hi": -0.001554863610828,
+        "se": 0.0012822146274334442,
+        "p_value": 0.0023692748791673958,
+        "n_clusters": 310,
+        "n_eff_clusters": 211.06797482797967,
+        "median": -4.641193196111662e-05,
+        "win_rate": 0.499488032765903,
+        "win_lo": 0.4916495210864731,
+        "win_hi": 0.5073267961050894,
+        "low_confidence": false
+      },
+      {
+        "horizon": 15,
+        "kind": "net_abn",
+        "label": "up z >= +3 net_abn_15",
+        "n": 15626,
+        "mean": -0.0048973626146459615,
+        "ci_lo": -0.007536026361404046,
+        "ci_hi": -0.0025548636108280007,
+        "se": 0.0012822146274334447,
+        "p_value": 0.00013374620244866324,
+        "n_clusters": 310,
+        "n_eff_clusters": 211.06797482797967,
+        "median": -0.0010464119319611167,
+        "win_rate": 0.4892486880839626,
+        "win_lo": 0.48141450080622167,
+        "win_hi": 0.4970881602165887,
+        "low_confidence": false
+      },
+      {
+        "horizon": 30,
+        "kind": "abn",
+        "label": "up z >= +3 abn_30",
+        "n": 15584,
+        "mean": -0.005036316956749185,
+        "ci_lo": -0.007969645731146039,
+        "ci_hi": -0.002102868748810875,
+        "se": 0.001541254383354967,
+        "p_value": 0.0010843516855613127,
+        "n_clusters": 309,
+        "n_eff_clusters": 210.34470883935887,
+        "median": 0.0002572839074940752,
+        "win_rate": 0.5013475359342916,
+        "win_lo": 0.49349803758549987,
+        "win_hi": 0.5091963701110983,
+        "low_confidence": false
+      },
+      {
+        "horizon": 30,
+        "kind": "net_abn",
+        "label": "up z >= +3 net_abn_30",
+        "n": 15584,
+        "mean": -0.006036316956749184,
+        "ci_lo": -0.008969645731146043,
+        "ci_hi": -0.0031028687488108765,
+        "se": 0.0015412543833549677,
+        "p_value": 8.984522621954934e-05,
+        "n_clusters": 309,
+        "n_eff_clusters": 210.34470883935887,
+        "median": -0.0007427160925059248,
+        "win_rate": 0.4941606776180698,
+        "win_lo": 0.4863134570606602,
+        "win_hi": 0.5020107762540805,
+        "low_confidence": false
+      }
+    ],
+    "threshold_grid": [
+      {
+        "z": -2.5,
+        "label": "z <= -2.5",
+        "n": 24128,
+        "mean": -0.0035575864805915446,
+        "ci_lo": -0.005311235554241855,
+        "ci_hi": -0.001969758428223361,
+        "se": 0.0008478708416741196,
+        "p_value": 2.7178277500622514e-05,
+        "n_clusters": 310,
+        "n_eff_clusters": 227.2762488356277,
+        "median": -0.0013061659473372564,
+        "win_rate": 0.488395225464191,
+        "win_lo": 0.48209031899060023,
+        "win_hi": 0.4947038265802795,
+        "low_confidence": false
+      },
+      {
+        "z": -3.0,
+        "label": "z <= -3.0",
+        "n": 16055,
+        "mean": -0.00391919989218731,
+        "ci_lo": -0.00627629092530481,
+        "ci_hi": -0.0019619176661222325,
+        "se": 0.0011021405542309705,
+        "p_value": 0.0003765595670081979,
+        "n_clusters": 310,
+        "n_eff_clusters": 204.14496292312896,
+        "median": -0.0009391721045633452,
+        "win_rate": 0.4918716910619745,
+        "win_lo": 0.484141426007369,
+        "win_hi": 0.4996058448857851,
+        "low_confidence": false
+      },
+      {
+        "z": -4.0,
+        "label": "z <= -4.0",
+        "n": 8583,
+        "mean": -0.004848334497942418,
+        "ci_lo": -0.008026096981664982,
+        "ci_hi": -0.0021781675179865785,
+        "se": 0.0015018247307246645,
+        "p_value": 0.0012453012339385674,
+        "n_clusters": 310,
+        "n_eff_clusters": 165.464387189226,
+        "median": -0.0013708088174930813,
+        "win_rate": 0.48805778865198646,
+        "win_lo": 0.47749063546418413,
+        "win_hi": 0.49863562691260443,
+        "low_confidence": false
+      }
+    ],
+    "factors": [
+      {
+        "name": "vol_z",
+        "kind": "bucket",
+        "n": 15830,
+        "diff": -0.0013542830024511465,
+        "diff_lo": -0.005265613564963895,
+        "diff_hi": 0.0024947965762954234,
+        "p_value": 0.49550643275484063,
+        "p_adj": 0.49550643275484063,
+        "reject": false,
+        "mean_0": -0.004314076825277554,
+        "n_0": 5340,
+        "mean_1": -0.0012454890726863845,
+        "n_1": 5195,
+        "mean_2": -0.0056683598277287,
+        "n_2": 5295,
+        "n_eff_clusters": 95.1281024819856,
+        "low_confidence": false,
+        "thesis_sign": "+",
+        "thesis": "high-volume drops overreact more"
+      },
+      {
+        "name": "sec_ret",
+        "kind": "bucket",
+        "n": 15832,
+        "diff": 0.005272511770950717,
+        "diff_lo": 0.0004261082202073691,
+        "diff_hi": 0.010815913622970484,
+        "p_value": 0.05187864362860583,
+        "p_adj": 0.12969660907151456,
+        "reject": false,
+        "mean_0": -0.0070467757596700585,
+        "n_0": 5137,
+        "mean_1": -0.0025567387181001902,
+        "n_1": 5542,
+        "mean_2": -0.001774263988719341,
+        "n_2": 5153,
+        "n_eff_clusters": 121.39855915868117,
+        "low_confidence": false,
+        "thesis_sign": "-",
+        "thesis": "core bet: drops on days the sector fell hardest revert more"
+      },
+      {
+        "name": "mkt_ret",
+        "kind": "bucket",
+        "n": 15832,
+        "diff": 0.0037203762836526036,
+        "diff_lo": -0.0014086096519455927,
+        "diff_hi": 0.009705292754817298,
+        "p_value": 0.19326938531965787,
+        "p_adj": 0.24965851848746584,
+        "reject": false,
+        "mean_0": -0.005576555009782193,
+        "n_0": 4930,
+        "mean_1": -0.003887737125528919,
+        "n_1": 5800,
+        "mean_2": -0.0018561787261295892,
+        "n_2": 5102,
+        "n_eff_clusters": 107.58664955070603,
+        "low_confidence": false,
+        "thesis_sign": "-",
+        "thesis": "drops on market-wide selloff days revert more"
+      },
+      {
+        "name": "peer_z",
+        "kind": "bucket",
+        "n": 15832,
+        "diff": -0.0035446793318339095,
+        "diff_lo": -0.006523701314507045,
+        "diff_hi": -0.0006483852998676734,
+        "p_value": 0.019932581421534066,
+        "p_adj": 0.09966290710767033,
+        "reject": true,
+        "mean_0": -0.002181228084661875,
+        "n_0": 5050,
+        "mean_1": -0.0032253559140986337,
+        "n_1": 5295,
+        "mean_2": -0.005725907416495785,
+        "n_2": 5487,
+        "n_eff_clusters": 120.02983978763861,
+        "low_confidence": false,
+        "thesis_sign": "-",
+        "thesis": "drops shared with sector peers (low peer z) revert more"
+      },
+      {
+        "name": "abs_z",
+        "kind": "bucket",
+        "n": 15832,
+        "diff": -0.0020628685554147145,
+        "diff_lo": -0.0052245453202756365,
+        "diff_hi": 0.0011623846355208114,
+        "p_value": 0.19972681478997267,
+        "p_adj": 0.24965851848746584,
+        "reject": false,
+        "mean_0": -0.0025721195546245,
+        "n_0": 4890,
+        "mean_1": -0.0039059616768943074,
+        "n_1": 5188,
+        "mean_2": -0.004634988110039214,
+        "n_2": 5754,
+        "n_eff_clusters": 182.51058950641104,
+        "low_confidence": false,
+        "thesis_sign": "+",
+        "thesis": "larger unexplained drops revert more"
+      }
+    ],
+    "stale_windows": {
+      "rule": "share of exactly-zero returns among finite returns in the 90-day fit window [t-90, t-1]",
+      "n_events": 16782,
+      "mean": 0.007627637444242484,
+      "gt_50pct": 1,
+      "gt_90pct": 0,
+      "worst": [
+        {
+          "date": "2023-06-14T00:00:00",
+          "ticker": "PARA",
+          "flat_share": 0.5333333333333333,
+          "z": -4.923200654407107
+        },
+        {
+          "date": "2019-07-22T00:00:00",
+          "ticker": "AMCR",
+          "flat_share": 0.5,
+          "z": -3.7109919501385633
+        },
+        {
+          "date": "2023-05-08T00:00:00",
+          "ticker": "PARA",
+          "flat_share": 0.5,
+          "z": -4.38566723738093
+        },
+        {
+          "date": "2022-12-14T00:00:00",
+          "ticker": "PARA",
+          "flat_share": 0.5,
+          "z": -3.0053930029349774
+        },
+        {
+          "date": "2022-06-22T00:00:00",
+          "ticker": "PARA",
+          "flat_share": 0.45555555555555555,
+          "z": -6.383249722445267
+        }
+      ]
+    },
+    "news": {
+      "status": "skipped: disabled (--no-news)"
+    }
+  },
+  "missing_exits": [
+    {
+      "horizon": 1,
+      "n_events": 16782,
+      "missing": 0,
+      "share": 0.0,
+      "etf_or_beta_missing": 0,
+      "embargoed_or_beyond_panel": 6,
+      "placebo_missing": 0,
+      "placebo_share": 0.0,
+      "placebo_etf_or_beta_missing": 0
+    },
+    {
+      "horizon": 5,
+      "n_events": 16782,
+      "missing": 0,
+      "share": 0.0,
+      "etf_or_beta_missing": 0,
+      "embargoed_or_beyond_panel": 15,
+      "placebo_missing": 0,
+      "placebo_share": 0.0,
+      "placebo_etf_or_beta_missing": 0
+    },
+    {
+      "horizon": 15,
+      "n_events": 16782,
+      "missing": 0,
+      "share": 0.0,
+      "etf_or_beta_missing": 0,
+      "embargoed_or_beyond_panel": 56,
+      "placebo_missing": 0,
+      "placebo_share": 0.0,
+      "placebo_etf_or_beta_missing": 0
+    },
+    {
+      "horizon": 30,
+      "n_events": 16782,
+      "missing": 0,
+      "share": 0.0,
+      "etf_or_beta_missing": 0,
+      "embargoed_or_beyond_panel": 113,
+      "placebo_missing": 0,
+      "placebo_share": 0.0,
+      "placebo_etf_or_beta_missing": 0
+    }
+  ],
+  "stale_entries": {
+    "rule": "volume[t+1] == 0 or as-traded open[t+1] == close[t]",
+    "n_events": 16782,
+    "n_stale": 671,
+    "share": 0.0399833154570373,
+    "placebo_n_stale": 843,
+    "placebo_share": 0.05023239184840901,
+    "by_year": [
+      {
+        "year": 2000,
+        "events": 356,
+        "stale": 38,
+        "share": 0.10674157303370786
+      },
+      {
+        "year": 2001,
+        "events": 343,
+        "stale": 43,
+        "share": 0.12536443148688048
+      },
+      {
+        "year": 2002,
+        "events": 491,
+        "stale": 64,
+        "share": 0.13034623217922606
+      },
+      {
+        "year": 2003,
+        "events": 307,
+        "stale": 49,
+        "share": 0.15960912052117263
+      },
+      {
+        "year": 2004,
+        "events": 353,
+        "stale": 47,
+        "share": 0.13314447592067988
+      },
+      {
+        "year": 2005,
+        "events": 362,
+        "stale": 48,
+        "share": 0.13259668508287292
+      },
+      {
+        "year": 2006,
+        "events": 394,
+        "stale": 35,
+        "share": 0.08883248730964467
+      },
+      {
+        "year": 2007,
+        "events": 518,
+        "stale": 28,
+        "share": 0.05405405405405406
+      },
+      {
+        "year": 2008,
+        "events": 791,
+        "stale": 17,
+        "share": 0.021491782553729456
+      },
+      {
+        "year": 2009,
+        "events": 295,
+        "stale": 6,
+        "share": 0.020338983050847456
+      },
+      {
+        "year": 2010,
+        "events": 518,
+        "stale": 13,
+        "share": 0.025096525096525095
+      },
+      {
+        "year": 2011,
+        "events": 629,
+        "stale": 17,
+        "share": 0.02702702702702703
+      },
+      {
+        "year": 2012,
+        "events": 565,
+        "stale": 9,
+        "share": 0.01592920353982301
+      },
+      {
+        "year": 2013,
+        "events": 554,
+        "stale": 13,
+        "share": 0.023465703971119134
+      },
+      {
+        "year": 2014,
+        "events": 651,
+        "stale": 15,
+        "share": 0.02304147465437788
+      },
+      {
+        "year": 2015,
+        "events": 722,
+        "stale": 22,
+        "share": 0.030470914127423823
+      },
+      {
+        "year": 2016,
+        "events": 810,
+        "stale": 27,
+        "share": 0.03333333333333333
+      },
+      {
+        "year": 2017,
+        "events": 794,
+        "stale": 46,
+        "share": 0.05793450881612091
+      },
+      {
+        "year": 2018,
+        "events": 953,
+        "stale": 18,
+        "share": 0.01888772298006296
+      },
+      {
+        "year": 2019,
+        "events": 781,
+        "stale": 17,
+        "share": 0.02176696542893726
+      },
+      {
+        "year": 2020,
+        "events": 1005,
+        "stale": 13,
+        "share": 0.012935323383084577
+      },
+      {
+        "year": 2021,
+        "events": 768,
+        "stale": 10,
+        "share": 0.013020833333333334
+      },
+      {
+        "year": 2022,
+        "events": 983,
+        "stale": 19,
+        "share": 0.019328585961342827
+      },
+      {
+        "year": 2023,
+        "events": 919,
+        "stale": 26,
+        "share": 0.028291621327529923
+      },
+      {
+        "year": 2024,
+        "events": 992,
+        "stale": 14,
+        "share": 0.014112903225806451
+      },
+      {
+        "year": 2025,
+        "events": 928,
+        "stale": 17,
+        "share": 0.018318965517241378
+      }
+    ],
+    "including_stale": {
+      "label": "primary net_abn_15, stale opens used as fills",
+      "n": 16726,
+      "mean": -0.004020197155733936,
+      "ci_lo": -0.006306950326913779,
+      "ci_hi": -0.002111088138747355,
+      "se": 0.001062934779750334,
+      "p_value": 0.00015546881733897772,
+      "n_clusters": 310,
+      "n_eff_clusters": 208.91793058847603,
+      "median": -0.0009263842869304132,
+      "win_rate": 0.49222766949659214,
+      "win_lo": 0.4846538073681678,
+      "win_hi": 0.49980510094605796,
+      "low_confidence": false
+    }
+  },
+  "coverage": {
+    "status": "ok",
+    "summary": {
+      "first_year": 2000,
+      "first_pct": 46.968169611535394,
+      "last_year": 2025,
+      "last_pct": 96.91848906560637,
+      "min_pct": 46.968169611535394,
+      "dev_pct": 70.15650181981012,
+      "members_with_no_data": 302
+    },
+    "table": [
+      {
+        "year": 1998,
+        "member_days": 62366,
+        "covered_days": 27504,
+        "coverage_pct": 44.10095244203573,
+        "members": 512,
+        "members_with_no_data": 291
+      },
+      {
+        "year": 1999,
+        "member_days": 123695,
+        "covered_days": 56179,
+        "coverage_pct": 45.41735720926472,
+        "members": 530,
+        "members_with_no_data": 298
+      },
+      {
+        "year": 2000,
+        "member_days": 124001,
+        "covered_days": 58241,
+        "coverage_pct": 46.968169611535394,
+        "members": 545,
+        "members_with_no_data": 302
+      },
+      {
+        "year": 2001,
+        "member_days": 122786,
+        "covered_days": 59796,
+        "coverage_pct": 48.699363119573896,
+        "members": 522,
+        "members_with_no_data": 277
+      },
+      {
+        "year": 2002,
+        "member_days": 124665,
+        "covered_days": 62117,
+        "coverage_pct": 49.82713672642682,
+        "members": 516,
+        "members_with_no_data": 265
+      },
+      {
+        "year": 2003,
+        "member_days": 124487,
+        "covered_days": 63822,
+        "coverage_pct": 51.26800388795617,
+        "members": 503,
+        "members_with_no_data": 247
+      },
+      {
+        "year": 2004,
+        "member_days": 124677,
+        "covered_days": 64883,
+        "coverage_pct": 52.04087361742743,
+        "members": 513,
+        "members_with_no_data": 253
+      },
+      {
+        "year": 2005,
+        "member_days": 124961,
+        "covered_days": 66040,
+        "coverage_pct": 52.84848872848329,
+        "members": 511,
+        "members_with_no_data": 241
+      },
+      {
+        "year": 2006,
+        "member_days": 124746,
+        "covered_days": 69071,
+        "coverage_pct": 55.36931043881167,
+        "members": 527,
+        "members_with_no_data": 245
+      },
+      {
+        "year": 2007,
+        "member_days": 124744,
+        "covered_days": 71852,
+        "coverage_pct": 57.59956390688129,
+        "members": 533,
+        "members_with_no_data": 235
+      },
+      {
+        "year": 2008,
+        "member_days": 125841,
+        "covered_days": 75651,
+        "coverage_pct": 60.11633728276158,
+        "members": 531,
+        "members_with_no_data": 216
+      },
+      {
+        "year": 2009,
+        "member_days": 125690,
+        "covered_days": 78423,
+        "coverage_pct": 62.39398520168669,
+        "members": 524,
+        "members_with_no_data": 202
+      },
+      {
+        "year": 2010,
+        "member_days": 125537,
+        "covered_days": 81127,
+        "coverage_pct": 64.6239754016744,
+        "members": 513,
+        "members_with_no_data": 188
+      },
+      {
+        "year": 2011,
+        "member_days": 125242,
+        "covered_days": 82606,
+        "coverage_pct": 65.95710704076907,
+        "members": 515,
+        "members_with_no_data": 179
+      },
+      {
+        "year": 2012,
+        "member_days": 124242,
+        "covered_days": 84881,
+        "coverage_pct": 68.31908694322371,
+        "members": 514,
+        "members_with_no_data": 167
+      },
+      {
+        "year": 2013,
+        "member_days": 125241,
+        "covered_days": 88233,
+        "coverage_pct": 70.45057129853642,
+        "members": 515,
+        "members_with_no_data": 156
+      },
+      {
+        "year": 2014,
+        "member_days": 125534,
+        "covered_days": 89770,
+        "coverage_pct": 71.51050711361066,
+        "members": 513,
+        "members_with_no_data": 150
+      },
+      {
+        "year": 2015,
+        "member_days": 126147,
+        "covered_days": 92440,
+        "coverage_pct": 73.27958651414619,
+        "members": 529,
+        "members_with_no_data": 150
+      },
+      {
+        "year": 2016,
+        "member_days": 127356,
+        "covered_days": 97261,
+        "coverage_pct": 76.36938974214014,
+        "members": 533,
+        "members_with_no_data": 134
+      },
+      {
+        "year": 2017,
+        "member_days": 126995,
+        "covered_days": 100525,
+        "coverage_pct": 79.15665971101224,
+        "members": 533,
+        "members_with_no_data": 119
+      },
+      {
+        "year": 2018,
+        "member_days": 126917,
+        "covered_days": 102684,
+        "coverage_pct": 80.90641915582624,
+        "members": 529,
+        "members_with_no_data": 107
+      },
+      {
+        "year": 2019,
+        "member_days": 127260,
+        "covered_days": 106508,
+        "coverage_pct": 83.6932264655037,
+        "members": 533,
+        "members_with_no_data": 90
+      },
+      {
+        "year": 2020,
+        "member_days": 127767,
+        "covered_days": 111358,
+        "coverage_pct": 87.15709064155847,
+        "members": 525,
+        "members_with_no_data": 72
+      },
+      {
+        "year": 2021,
+        "member_days": 127260,
+        "covered_days": 113373,
+        "coverage_pct": 89.08769448373408,
+        "members": 526,
+        "members_with_no_data": 63
+      },
+      {
+        "year": 2022,
+        "member_days": 126437,
+        "covered_days": 115988,
+        "coverage_pct": 91.73580518360923,
+        "members": 527,
+        "members_with_no_data": 52
+      },
+      {
+        "year": 2023,
+        "member_days": 125750,
+        "covered_days": 118483,
+        "coverage_pct": 94.22107355864811,
+        "members": 522,
+        "members_with_no_data": 34
+      },
+      {
+        "year": 2024,
+        "member_days": 126757,
+        "covered_days": 121319,
+        "coverage_pct": 95.70990162279006,
+        "members": 523,
+        "members_with_no_data": 26
+      },
+      {
+        "year": 2025,
+        "member_days": 101606,
+        "covered_days": 98475,
+        "coverage_pct": 96.91848906560637,
+        "members": 516,
+        "members_with_no_data": 18
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 # Parameter registry
 
-32 parameters, 0 fit to data. Data-fit parameters are only ever chosen inside walk-forward fit windows and get the most out-of-sample scrutiny.
+34 parameters, 0 fit to data. Data-fit parameters are only ever chosen inside walk-forward fit windows and get the most out-of-sample scrutiny.
 
 | Parameter | Value | Source | Layer | Rationale |
 |---|---|---|---|---|
@@ -30,6 +30,8 @@
 | `MIN_SAMPLE_FINDING` | `30` | theory | backtest | Thesis: under ~30 instances is low-confidence, not a finding. |
 | `RANDOM_SEED` | `20261023` | convention | backtest | Fixed seed for reproducibility. |
 | `STABILITY_MIN_SUBPERIODS` | `2` | convention | backtest | Pre-registered: the mean must have H1's (positive) sign in at least 2 of the 3 sub-periods. |
+| `STALE_OPEN_RULE` | `'volume[t+1] == 0 or as-traded open[t+1] == close[t]'` | convention | backtest | An entry print that is not a real t+1 opening trade (no volume, or a free-data open copied from the prior close, ~10-15% of post-drop S&P bars before 2008 vs ~1-2% after) is missing data, not a fill; using it would silently turn the pre-registered next-open entry into a close entry, which favours H1. |
+| `STALE_WINDOW_SHARES` | `(0.5, 0.9)` | convention | backtest | Shares of exactly-zero returns in a fit window above which the window is mostly stale prices (halt, illiquidity) and the rolling sigma is deflated, so z = resid/sigma can spike and manufacture fake events. |
 | `SUBPERIODS` | `((2000, 2008), (2009, 2016), (2017, 2025))` | convention | backtest | Pre-registered stability split (criterion 4): three ~8-year calendar blocks fixed before any result. |
 | `SUSPICIOUS_SHARPE` | `2.0` | theory | backtest | Thesis: Sharpe above ~2-3 is treated as a probable bug until proven otherwise. |
 | `WF_FIT_YEARS` | `2` | theory | backtest | Thesis: fit on rolling ~2 years. |

@@ -43,16 +43,59 @@ Env: `SEC_USER_AGENT="Name email"` (SEC requires contact info). Data cache: `dat
 | Cluster bootstrap, Newey-West, BH, factor tests | `backtest/stats.py`, `backtest/factor_tests.py` | done, reviewed, fixed |
 | Walk-forward + placebo | `backtest/walkforward.py`, `backtest/placebo.py` | done, tests pass, **not yet reviewed** |
 | Synthetic market generator | `backtest/synthetic.py` | done, reviewed, fixed |
-| Phase 1 experiment, CLI, report, end-to-end synthetic tests | `experiments/phase1.py`, `report/markdown.py`, `cli.py`, `tests/test_phase1_synthetic.py` | **in progress** (spec below) |
+| Phase 1 experiment, CLI, report, end-to-end synthetic tests | `experiments/phase1.py`, `report/markdown.py`, `cli.py`, `tests/test_phase1_synthetic.py` | done, tested; run on real data 2026-10-23 — **FAIL** (see Phase 1 outcome below) |
 
 Data cached locally: prices for 751/1163 tickers ever in the S&P 500 since mid-1998 (missing = mostly
 delisted → survivorship bias, reported by `panel.coverage`), SEC submissions for 691 tickers, full macro panel.
 After the prices fix, verify the cache is still compatible (`load_daily` on a cached ticker); if not,
 re-fetch with `--refresh`.
 
+## Phase 1 outcome (2026-10-23): FAIL — STOP. Do not build Phases 2+.
+
+`python -m omodel phase1 --no-news` on the cached real panel (news factor skipped: no SEC_USER_AGENT set).
+Run at 2026-10-23T14:56Z from a clean tree at `10d6b33`; pre-registration SHA-256 matches the committed
+file; holdout untouched. Full numbers: `reports/phase1/{report.md,results.json}`.
+
+| id | Criterion | Value | 95% CI | n | Result |
+|---|---|---|---|---|---|
+| 1 | Event mean net abnormal 15d | −0.39% | [−0.63%, −0.20%] | 16,055 | FAIL (sign negative) |
+| 1b | Excess over placebo | −0.14% | [−0.37%, +0.06%] | 31,942 | FAIL |
+| 2 | Walk-forward OOS | −0.42% | [−0.69%, −0.18%] | 11,920 | FAIL |
+| 3 | Placebo CI includes 0 | −0.15% | [−0.27%, −0.04%] | 15,887 | FAIL → run_invalid = true |
+| 4 | ≥ 2 of 3 sub-periods positive | 0 of 3 | — | 16,055 | FAIL |
+| 5 | Calendar Sharpe < 2 | −0.97 | — | 6,491 days | pass |
+
+Criterion-3 diagnosis (the "invalid until it is found" condition is satisfied): NOT a pipeline bug. The
+pre-registered placebo pool keeps days BEFORE events (excluding them would be lookahead), so 12.66% of
+placebo windows contain a same-ticker event day; those windows average −5.87% (the event day itself
+averages −5.98% abnormal) and account for the entire placebo mean: removing them leaves +0.68%
+[+0.58%, +0.79%], and the mixture reproduces −0.155% to within 5%. Ruled out empirically: terminal
+delisting stretches (0% of the drift), single-year concentration (none; mild negative drift spread
+across 2006–2025), selloff-window concentration (none), near-data-end events (0.34% of events, ~1% of
+the primary mean). The synthetic null-world placebo is clean in the test suite, so the machinery can
+produce a clean placebo when the world has no events.
+
+Substantive reading: in this survivor-biased sample, large idiosyncratic drops do NOT revert. The net
+mean is significantly BELOW zero (−0.39%, CI excludes 0); walk-forward OOS matches in-sample (−0.42%,
+48 splits; the deepest-drop threshold z=−4 chosen in 29 of 48 windows, still negative OOS); costs
+explain only 0.10 pp of the −0.39%; up-move events (z ≥ +3) are symmetrically negative (−0.49% net);
+the calendar-time portfolio loses significantly (Newey-West t = −5.0, 37 positions/day average). The
+pre-registered excess over placebo is −0.14% (CI includes 0); versus crash-free windows only — a
+lookahead-style filter, diagnostic only — the gap is about −0.97 pp. The data point the opposite way
+from H1, never towards it.
+
+Per thesis rule 1 and the pre-registration: STOP. Later phases are not built on this premise. Rule 9:
+docs/PREREGISTRATION.md must not be edited now. Any redesign (e.g. excluding pre-event windows from the
+placebo, or survivorship-free price data via the documented loader hook in README) requires a NEW dated
+pre-registration written and committed before the next result — the owner's call. Secondary notes: 8-K
+factor skipped (--no-news); stale-open entries 4.0% (13–16% in 2001–2005; including them the mean is
+−0.40%, unchanged); stale fit-windows: 1 event > 50% zero returns (PARA 2023-06-14); close-entry bounce
+≈ 0; factor battery: peer_z is the only borderline BH discovery (p_adj 0.0997, thesis-predicted sign) —
+reported, not decided on; dev-window member-day coverage 70.2% (2000: 47.0%, 2025: 96.9%).
+
 ## Next steps, in order
 
-### 1. Finish Phase 1 integration (if `experiments/phase1.py` is missing or incomplete)
+### 1. Finish Phase 1 integration — DONE (commit 0ff10f8)
 - `run(panel=None, dec=None, *, out_dir=None, news=True, write=True) -> dict` executing
   `docs/PREREGISTRATION.md` exactly, including Amendment 1 (events − placebo difference must be > 0, CI excl. 0).
 - Steps: build panel → decompose → events for each z in `EVENT_Z_GRID` with next-open forward returns →
@@ -67,7 +110,7 @@ re-fetch with `--refresh`.
   pre-D decomposition value and event unchanged).
 - CLI: `python -m omodel {fetch-prices,fetch-macro,fetch-sec,snapshot-options,phase1,params}`.
 
-### 2. Close review gaps before trusting any real result
+### 2. Close review gaps — DONE (commits 8f0d0ba, 10d6b33: reviews clean, deferred items decided, events tests added)
 - Adversarially review `data/sec.py`, `backtest/walkforward.py`, `backtest/placebo.py` (lenses: lookahead,
   correctness vs spec, real-data robustness, test adequacy).
 - `events.py`: add a test for the exit-on-holdout-start boundary and a lookahead test covering the event
@@ -75,13 +118,13 @@ re-fetch with `--refresh`.
 - Deferred items to decide on: stale/zero-return stretches deflating sigma (l2); panel volume is
   split-adjusted while types.py says raw (prices); CL=F negative print 2020-04-20 (macro).
 
-### 3. Run Phase 1 on real data
+### 3. Run Phase 1 on real data — DONE 2026-10-23: FAIL (see Phase 1 outcome)
 `SEC_USER_AGENT=... .venv/Scripts/python.exe -m omodel phase1`. Then audit before believing it: placebo
 clean? Sharpe < 2? Does the effect survive the close-vs-open entry comparison? Is it concentrated in
 low-coverage years? Report: what was tested, OOS result, n, CI, and what would have to be true for it to
 be a fluke. **If the verdict is FAIL, stop here and report.**
 
-### 4. Phase 2 — Layer 1 regime filter (only if Phase 1 passes)
+### 4. Phase 2 — Layer 1 regime filter (BLOCKED: Phase 1 failed)
 `layers/l1_regime.py`: daily point-in-time features from `macro.load_macro_panel()` — VIX level, VIX/VIX3M
 (>1 = backwardation), 5d Δ2Y/Δ10Y, 2s10s, 20d Δlog(HYG/LQD), 20d ΔDXY, |5d| gold/oil moves, breadth
 (% members above 50dma), 60d average pairwise correlation (variance-ratio formula), and a market-implied

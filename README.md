@@ -21,7 +21,7 @@ A backtest that looks too good is treated as a bug: a calendar-time Sharpe above
 | Phase | Builds | Proves | Status |
 |---|---|---|---|
 | 0 | Point-in-time price, sector-ETF, macro, SEC and option-snapshot pipeline | Nothing yet: infrastructure | **Built** |
-| 1 | Layer 2 decomposition (rolling market + sector residuals) and an event study | Whether overreaction is real and exploitable at all | **Built; verdict decides everything below** |
+| 1 | Layer 2 decomposition (rolling market + sector residuals) and an event study | Whether overreaction is real and exploitable at all | **Ran 2026-10-23: FAIL** — no post-drop reversion; stopped per [docs/PREREGISTRATION.md](docs/PREREGISTRATION.md) (see docs/HANDOFF.md and reports/phase1/report.md) |
 | 2 | Layer 1 macro/regime context as a filter on Phase 1 | Whether regime context improves the signal | Not started: gated on a Phase 1 PASS |
 | 3 | Layer 3 fundamental veto | Whether the veto improves win rate over Phase 2 | Gated |
 | 4 | Layer 5 options EV on real historical chains, by delta bucket | Whether the equity edge survives spreads and IV | Gated |
