@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omodel"
+version = "0.1.0"
+description = "Options overreaction model: ranked option shortlists from residual-move decomposition, validated walk-forward."
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "statsmodels>=0.14",
+    "requests>=2.31",
+    "pyarrow>=14",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+omodel = "omodel.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = ["network: hits live data endpoints (deselected by default)"]
+addopts = "-m 'not network'"

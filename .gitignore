@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+build/
+dist/
+
+# Cached market data is large and re-fetchable; reports are committed instead.
+data/
+!data/.gitkeep
