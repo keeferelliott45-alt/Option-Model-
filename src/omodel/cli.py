@@ -58,9 +58,15 @@ def _fetch_sec(args: argparse.Namespace) -> int:
     return 0
 
 
+def _current_members() -> list[str]:
+    m = universe.load_membership(refresh=True)
+    return sorted(m.loc[m["end_date"].isna(), "ticker"].unique())
+
+
 def _snapshot_options(args: argparse.Namespace) -> int:
-    paths = cboe_options.snapshot(args.tickers)
-    print(f"options: {len(paths)} new chain snapshot(s) written for {len(set(args.tickers))} ticker(s)")
+    tickers = args.tickers or _current_members()
+    paths = cboe_options.snapshot(tickers)
+    print(f"options: {len(paths)} new chain snapshot(s) written for {len(set(tickers))} ticker(s)")
     return 0
 
 
@@ -113,7 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=_fetch_sec)
 
     p = sub.add_parser("snapshot-options", help="Store today's CBOE delayed option chains (run after ~16:30 ET).")
-    p.add_argument("--tickers", nargs="+", required=True)
+    p.add_argument("--tickers", nargs="+", help="Default: current S&P 500 members.")
     p.set_defaults(func=_snapshot_options)
 
     p = sub.add_parser("phase1", help="Run the pre-registered Phase 1 event study and write the report.")

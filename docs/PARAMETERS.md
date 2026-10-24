@@ -1,6 +1,6 @@
 # Parameter registry
 
-34 parameters, 0 fit to data. Data-fit parameters are only ever chosen inside walk-forward fit windows and get the most out-of-sample scrutiny.
+44 parameters, 0 fit to data. Data-fit parameters are only ever chosen inside walk-forward fit windows and get the most out-of-sample scrutiny.
 
 | Parameter | Value | Source | Layer | Rationale |
 |---|---|---|---|---|
@@ -18,6 +18,16 @@
 | `SEC_NEWS_WINDOW` | `1` | convention | L2 | News effective the prior session can still drive day-t moves, so day t is flagged for effective dates t and t-1. |
 | `VOLUME_Z_WINDOW` | `20` | theory | L2 | Thesis: volume vs 20-day average. |
 | `HORIZONS` | `(1, 5, 15, 30)` | theory | L2/L4 | Thesis: forward returns at 1, 5, 15, 30 trading days. |
+| `COMMISSION_PER_CONTRACT` | `0.65` | convention | L5 | Typical retail per-contract commission, charged on open and close. |
+| `CONTRACT_MULTIPLIER` | `100` | convention | L5 | US equity options: 100 shares. |
+| `DELTA_EDGES` | `(0.05, 0.2, 0.4, 0.6, 0.8)` | theory | L5 | Thesis delta buckets; reported separately, never pooled. |
+| `EV_HURDLE` | `0.05` | theory | L5 | Min EV as a fraction of max loss to surface. |
+| `FAR_OTM_EV_HURDLE` | `0.15` | theory | L5 | Higher bar for 0.05-0.20 delta: most fragile to distribution error. |
+| `MAX_SPREAD_PCT` | `0.1` | convention | L5 | Max (ask-bid)/mid per leg: an edge that cannot be filled is not an edge. |
+| `MAX_SPREAD_WIDTH_STEPS` | `4` | convention | L5 | Vertical spreads span at most this many listed strikes. |
+| `MIN_OPEN_INTEREST` | `100` | convention | L5 | Liquidity floor per leg. |
+| `MIN_VOLUME` | `10` | convention | L5 | Liquidity floor per leg (day volume). |
+| `RISK_FREE_DEFAULT` | `0.04` | convention | L5 | Fallback rate when no Treasury yield is passed in. |
 | `BOOTSTRAP_REPS` | `2000` | convention | backtest | Cluster-bootstrap replications for confidence intervals. |
 | `CI_LEVEL` | `0.95` | convention | backtest | Two-sided confidence level. |
 | `CLUSTER_FREQ` | `'M'` | convention | backtest | Calendar-month date clusters: wider than the 15d primary horizon, so overlapping forward windows and crash-clustered events mostly share a cluster. |

@@ -30,10 +30,20 @@ def test_parser_accepts_every_subcommand(argv, command):
     assert args.command == command and callable(args.func)
 
 
-def test_parser_rejects_missing_command_and_required_tickers():
-    for argv in ([], ["snapshot-options"], ["bogus"]):
+def test_parser_rejects_missing_or_unknown_command():
+    for argv in ([], ["bogus"]):
         with pytest.raises(SystemExit):
             cli.build_parser().parse_args(argv)
+
+
+def test_snapshot_defaults_to_current_members(monkeypatch):
+    members = pd.DataFrame({"ticker": ["AAA", "BBB", "OLD"],
+                            "end_date": [pd.NaT, pd.NaT, pd.Timestamp("2010-01-01")]})
+    monkeypatch.setattr(cli.universe, "load_membership", lambda refresh=False: members)
+    seen = {}
+    monkeypatch.setattr(cli.cboe_options, "snapshot", lambda t: seen.setdefault("t", t) and [])
+    assert cli.main(["snapshot-options"]) == 0
+    assert seen["t"] == ["AAA", "BBB"]
 
 
 def test_flags_default_off():
