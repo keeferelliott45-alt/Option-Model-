@@ -43,9 +43,14 @@ def fit_all() -> dict:
     raw = panel.raw_close.reindex(me)
     mask = (panel.member.reindex(me).eq(True) & (raw >= 5)).stack(future_stack=True).to_numpy()
     feats = eng.har_features(ret, mac["vix"], mac["vix3m"])
-    out = {"fitted": str(pd.Timestamp.today().date()), "features": list(eng.HAR_FEATURES), "har": {}}
+    from omodel.experiments.stage2 import earnings_mask
+
+    em = earnings_mask(ret, panel.dates).astype(float)
+    out = {"fitted": str(pd.Timestamp.today().date()), "features": list(eng.HAR_FEATURES), "har": {},
+           "variant": "HAR-N (fit on no-earnings windows; Stage 2 amendment 2)"}
     for h in HORIZONS:
-        frames = {**feats, "y": eng.har_target(ret, h)}
+        quiet = em.shift(-h).rolling(h, min_periods=1).max().eq(0)
+        frames = {**feats, "y": eng.har_target(ret, h).where(quiet)}
         df = pd.concat({k: v.reindex(me).stack(future_stack=True) for k, v in frames.items()}, axis=1)[mask]
         m = eng.HAR().fit(df[list(eng.HAR_FEATURES)], df["y"])
         out["har"][str(h)] = {"coef": m.coef.tolist(), "resid_var": m.resid_var, "n": int(df["y"].notna().sum())}

@@ -58,3 +58,16 @@ image (too narrow in earnings windows).
   HAR-N for the (no-earnings) windows it scans; fail → no live picks are shown until a calibrated engine exists.
 - The live disagreement guard compares against the at-the-money implied vol of the same expiry instead of the
   30-day index (convention).
+
+## Amendment 3 — 2026-10-24, before any tail result
+
+Reason: B/B2 validate only the central 50%/90%; far out-of-the-money option values depend on how far the
+price goes beyond that (first live scan: a 7-day PLTR call whose model in-the-money probability matched the
+market's delta, 6.8%, but whose expected payoff was ~4x the price because of the bootstrapped right tail).
+
+- **Test E (tail payoff calibration):** on no-earnings windows (HAR-N, development), for each stock-month
+  compute the model's expected excess of the 21-day log return beyond its own 95th percentile,
+  E[(R − q95)+], and below its 5th percentile, E[(q5 − R)+], and the realized averages of the same
+  quantities. Pass: realized/model ratio within [0.8, 1.25] for both tails.
+- **Consequence:** if E fails, contracts in the 0.05–0.20 delta bucket (tail-priced) are not shown, and the
+  report says so; other buckets are unaffected.

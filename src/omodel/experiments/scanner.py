@@ -108,7 +108,9 @@ def run(refresh: bool = True) -> pd.DataFrame:
                 continue  # Stage 2: the engine is not calibrated across earnings
             h = max(int(np.busday_count(asof.date(), expiry.date())), 1)
             vol = float(fit.har_vol(models, h, X.loc[[t]])[0])
-            if np.isfinite(iv30) and iv30 > 0 and not (1 / IV_GUARD <= vol / iv30 <= IV_GUARD):
+            ex = chain[(chain["expiry"] == expiry) & (chain["iv"] > 0)]
+            atm_iv = float(ex.loc[(ex["strike"] - spot).abs().idxmin(), "iv"]) if len(ex) else iv30
+            if np.isfinite(atm_iv) and atm_iv > 0 and not (1 / IV_GUARD <= vol / atm_iv <= IV_GUARD):
                 continue  # strong disagreement with the market = missing information, not edge
             ratio = fit.crash_ratio(models, 0.5 * np.log(float(fit.har_vol(models, 21, X.loc[[t]])[0]) ** 2),
                                     np.log(max(spct.get(t, np.nan), 1e-5)) if t in spct else np.nan)
