@@ -29,3 +29,18 @@ Inputs follow Stage 1: no return factor passed, so **drift = 0**. Passing factor
 Sub-periods: 2003–2008, 2009–2016, 2017–2025. Universe and price filter as Stage 1. Any Stage 2 component
 that fails is replaced by its simpler alternative (A fails → RV22; C fails → no earnings jump; D fails → no
 tail adjustment) and Stage 3 (the forward option test) uses whatever survives.
+
+## Amendment 1 — 2026-10-24, before any HAR-X result
+
+Reason: the first live scan showed HAR projecting just-finished earnings jumps forward (e.g. RV5 81% vs implied
+28% for a stock the day after earnings), which makes options look cheap exactly when implied vol collapses.
+The live scanner never holds across earnings, so the forecast should describe non-earnings volatility.
+
+- **HAR-X:** same model, but daily returns on 8-K 2.02 effective days and the following day are set to missing
+  before computing RV5/RV22/RV66 (the target is unchanged).
+- **Test A2:** HAR-X vs HAR on QLIKE, evaluated only on stock-months whose 21-day target window contains no
+  estimated earnings day (the scanner's use case). Same pass rule as A. Pass → the live engine uses HAR-X;
+  fail → HAR stays.
+- **Live guard (convention, not tested):** a contract is not shown when the engine's volatility for its
+  stock is more than 1.5x or less than 0.5x the market's 30-day implied vol; such disagreement is treated as
+  missing information, not as edge.

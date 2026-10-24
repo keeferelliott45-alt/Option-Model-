@@ -100,6 +100,21 @@ def test_vertical_spreads_are_defined_risk_and_liquid():
     assert all(np.isfinite(l5.evaluate(s, grid, probs)["max_loss"]) for s in spreads)
 
 
+def test_scan_expiry_matches_reference_evaluator():
+    chain = _chain()
+    grid, probs = l5.lognormal_grid(S, T, 0.25)
+    fast = l5.scan_expiry(chain, grid, probs).set_index(["name", "legs"])
+    for st in l5.vertical_spreads(chain, pd.Timestamp("2026-12-18")):
+        ref = l5.evaluate(st, grid, probs)
+        legs = "/".join(f"{'+' if l.qty > 0 else '-'}{l.cp}{l.strike:g}" for l in st.legs)
+        if (st.name, legs) not in fast.index:
+            legs = "/".join(reversed(legs.split("/")))
+        row = fast.loc[(st.name, legs)]
+        assert row["ev"] == pytest.approx(ref["ev"], abs=0.5)
+        assert row["max_loss"] == pytest.approx(ref["max_loss"], abs=0.5)
+    assert l5.scan_expiry(chain.iloc[:0], grid, probs).empty
+
+
 def test_rank_applies_far_otm_hurdle_and_excludes_deep_itm():
     cands = [dict(name="a", ev_pct_risk=0.10, delta=0.10),   # far OTM, below 0.15 hurdle
              dict(name="b", ev_pct_risk=0.10, delta=0.30),

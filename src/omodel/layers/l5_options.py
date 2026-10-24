@@ -190,6 +190,57 @@ def vertical_spreads(chain: pd.DataFrame, expiry: pd.Timestamp, max_steps: int |
     return out
 
 
+def scan_expiry(chain: pd.DataFrame, grid: np.ndarray, probs: np.ndarray, max_steps: int | None = None) -> pd.DataFrame:
+    """Vectorised EV for every liquid single and vertical in one expiry; fills at bid/ask, commissions both ways."""
+    steps = MAX_WIDTH_STEPS if max_steps is None else max_steps
+    cdf = np.concatenate([[0.0], np.cumsum(probs)])
+
+    def p_below(x):
+        return cdf[np.searchsorted(grid, np.asarray(x, dtype=float), side="left")]
+
+    rows = []
+    c2 = 2 * COMMISSION   # one contract: open + close
+    c4 = 4 * COMMISSION   # two legs: open + close
+    for cp in ("C", "P"):
+        side = chain[(chain["cp"] == cp) & liquid(chain)].sort_values("strike").reset_index(drop=True)
+        if side.empty:
+            continue
+        K = side["strike"].to_numpy(float)
+        bid, ask, dlt = (side[c].to_numpy(float) for c in ("bid", "ask", "delta"))
+        intrinsic = np.maximum(grid[None, :] - K[:, None], 0) if cp == "C" else np.maximum(K[:, None] - grid[None, :], 0)
+        E = intrinsic @ probs * MULTIPLIER
+        ev = E - ask * MULTIPLIER - c2
+        be = K + ask if cp == "C" else K - ask
+        pop = 1 - p_below(be) if cp == "C" else p_below(be)
+        for i in range(len(K)):
+            rows.append(("long_call" if cp == "C" else "long_put", f"+{cp}{K[i]:g}", ev[i], ask[i] * MULTIPLIER + c2,
+                         np.inf, pop[i], dlt[i]))
+        n = len(K)
+        for i in range(n):
+            for j in range(i + 1, min(i + 1 + steps, n)):
+                width = (K[j] - K[i]) * MULTIPLIER
+                if cp == "C":
+                    debit = (ask[i] - bid[j]) * MULTIPLIER
+                    rows.append(("bull_call_debit", f"+C{K[i]:g}/-C{K[j]:g}", E[i] - E[j] - debit - c4,
+                                 debit + c4, width - debit - c4, 1 - p_below(K[i] + debit / MULTIPLIER), dlt[i]))
+                    credit = (bid[i] - ask[j]) * MULTIPLIER
+                    rows.append(("bear_call_credit", f"-C{K[i]:g}/+C{K[j]:g}", E[j] - E[i] + credit - c4,
+                                 width - credit + c4, credit - c4, p_below(K[i] + credit / MULTIPLIER), dlt[i]))
+                else:
+                    credit = (bid[j] - ask[i]) * MULTIPLIER
+                    rows.append(("bull_put_credit", f"-P{K[j]:g}/+P{K[i]:g}", E[i] - E[j] + credit - c4,
+                                 width - credit + c4, credit - c4, 1 - p_below(K[j] - credit / MULTIPLIER), dlt[j]))
+                    debit = (ask[j] - bid[i]) * MULTIPLIER
+                    rows.append(("bear_put_debit", f"+P{K[j]:g}/-P{K[i]:g}", E[j] - E[i] - debit - c4,
+                                 debit + c4, width - debit - c4, p_below(K[j] - debit / MULTIPLIER), dlt[j]))
+    cols = ["name", "legs", "ev", "max_loss", "max_gain", "prob_profit", "delta"]
+    out = pd.DataFrame(rows, columns=cols)
+    out[cols[2:]] = out[cols[2:]].astype(float)
+    out = out[(out["max_loss"] > 0) & (out["max_gain"] > 0) & np.isfinite(out["ev"])]
+    out["ev_pct_risk"] = out["ev"] / out["max_loss"]
+    return out.reset_index(drop=True)
+
+
 def rank(candidates: list[dict]) -> pd.DataFrame:
     """Rank by EV as % of max loss with a per-bucket hurdle; 0.80+ delta is excluded (no optionality left)."""
     df = pd.DataFrame(candidates)

@@ -89,6 +89,24 @@ def _phase1(args: argparse.Namespace) -> int:
     return 0
 
 
+def _scan(args: argparse.Namespace) -> int:
+    from omodel.experiments import scanner
+
+    picks = scanner.run(refresh=not args.no_refresh)
+    print(f"scan: {len(picks)} pick(s); report in reports/scanner/")
+    return 0
+
+
+def _fit_models(args: argparse.Namespace) -> int:
+    from omodel.experiments.shortlist import _go_live
+    from omodel.forecast import fit
+
+    _go_live()
+    m = fit.fit_all()
+    print(f"models fitted {m['fitted']}: HAR n={m['har']['21']['n']}, crash events={m['crash_si']['events']}")
+    return 0
+
+
 def _shortlist(args: argparse.Namespace) -> int:
     from omodel.experiments import shortlist
 
@@ -145,6 +163,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("snapshot-options", help="Store today's CBOE delayed option chains (run after ~16:30 ET).")
     p.add_argument("--tickers", nargs="+", help="Default: current S&P 500 members.")
     p.set_defaults(func=_snapshot_options)
+
+    p = sub.add_parser("scan", help="General scanner: score every liquid option on all members (paper only).")
+    p.add_argument("--no-refresh", action="store_true", help="Use cached prices and macro.")
+    p.set_defaults(func=_scan)
+
+    p = sub.add_parser("fit-models", help="Refit the forecast models on all history (also done monthly by scan).")
+    p.set_defaults(func=_fit_models)
 
     p = sub.add_parser("shortlist", help="Score today's events through all five layers (paper only).")
     p.add_argument("--no-refresh", action="store_true", help="Use cached prices and macro.")

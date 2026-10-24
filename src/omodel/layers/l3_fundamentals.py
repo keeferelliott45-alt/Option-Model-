@@ -44,8 +44,10 @@ def facts_long(facts: dict | None) -> pd.DataFrame:
                 for it in items:
                     rows.append((concept, it.get("start"), it.get("end"), it.get("val"), it.get("filed")))
     df = pd.DataFrame(rows, columns=["concept", "start", "end", "val", "filed"])
+    lo, hi = pd.Timestamp("1990-01-01"), pd.Timestamp("2100-01-01")
     for c in ("start", "end", "filed"):
-        df[c] = pd.to_datetime(df[c], errors="coerce")
+        d = pd.to_datetime(df[c], errors="coerce")
+        df[c] = d.where((d >= lo) & (d <= hi))  # a few XBRL facts carry typo dates (e.g. year 0201)
     df["days"] = (df["end"] - df["start"]).dt.days
     return df.dropna(subset=["end", "filed", "val"])
 

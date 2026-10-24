@@ -90,20 +90,33 @@ def bank(z: np.ndarray, h: int, n: int, rng: np.random.Generator, earnings_z: np
     return draws.sum(axis=1)
 
 
-def price_distribution(spot: float, vol_ann: float, h: int, z_hist: np.ndarray, earnings_z: np.ndarray | None,
-                       n: int | None = None, seed: int = 0, bins: int = 401) -> tuple[np.ndarray, np.ndarray]:
-    """Discrete S_T distribution (grid, probs) for Layer 5: drift 0, HAR vol, FHS shape, optional earnings jump."""
+CRASH_LOG_RET = params.register("CRASH_LOG_RET", -0.25, "theory", "forecast",
+                                "Stage 1/2 crash definition over 63 days; scaled by sqrt(h/63) for other horizons.")
+
+
+def price_distribution(spot: float, vol_ann: float, h: int, z_hist: np.ndarray, earnings_z: np.ndarray | None = None,
+                       n: int | None = None, seed: int = 0, bins: int = 401,
+                       crash_ratio: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
+    """Discrete S_T distribution (grid, probs) for Layer 5: drift 0, HAR vol, FHS shape, short-interest tail tilt."""
     n = SIM_PATHS if n is None else n
     rng = np.random.default_rng(seed)
     s = bank(z_hist, h, n, rng, earnings_z)
     s = s[np.isfinite(s)]
     # Rescale so the bank's own variance matches h (the vol level comes from HAR, only the shape from history).
     s = s / np.sqrt(np.mean(s ** 2) / h)
-    st = spot * np.exp(vol_ann / np.sqrt(252) * s)
+    log_r = vol_ann / np.sqrt(252) * s
+    w = np.ones(len(log_r))
+    tail = log_r < CRASH_LOG_RET * np.sqrt(h / 63)
+    p_tail = tail.mean()
+    if crash_ratio != 1.0 and 0 < p_tail < 1:
+        new_tail = min(p_tail * crash_ratio, 0.5)
+        w[tail] = new_tail / p_tail
+        w[~tail] = (1 - new_tail) / (1 - p_tail)
+    st = spot * np.exp(log_r)
     edges = np.quantile(st, np.linspace(0, 1, bins + 1))
     edges = np.unique(edges)
     idx = np.clip(np.searchsorted(edges, st, side="right") - 1, 0, len(edges) - 2)
-    probs = np.bincount(idx, minlength=len(edges) - 1).astype(float)
-    centres = np.bincount(idx, weights=st, minlength=len(edges) - 1) / np.where(probs > 0, probs, 1)
+    probs = np.bincount(idx, weights=w, minlength=len(edges) - 1)
+    centres = np.bincount(idx, weights=w * st, minlength=len(edges) - 1) / np.where(probs > 0, probs, 1)
     keep = probs > 0
     return centres[keep], probs[keep] / probs[keep].sum()
