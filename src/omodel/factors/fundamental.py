@@ -137,11 +137,15 @@ def fundamental_factors(f: dict[str, pd.DataFrame], raw_price: pd.DataFrame) -> 
     gm = g / f["revenue"].where(f["revenue"] > 0)
     turn = f["revenue"] / a
     roa = ni / a
-    signals = [roa > 0, cfo > 0, roa > roa.shift(lag), cfo > ni, lt_lev < lt_lev.shift(lag),
-               cur > cur.shift(lag), f["shares"] <= f["shares"].shift(lag), gm > gm.shift(lag),
-               turn > turn.shift(lag)]
-    avail = sum(s.notna() & (s.astype(float) == s.astype(float)) for s in signals)
-    f_score = sum(s.astype(float) for s in signals).where(avail >= 6)
+    def gt(x, y):  # NaN when either side is missing; plain '>' would silently score missing data as 0
+        return (x > y).astype(float).where(x.notna() & (y.notna() if hasattr(y, "notna") else True))
+
+    sh = f["shares"]
+    signals = [gt(roa, 0), gt(cfo, 0), gt(roa, roa.shift(lag)), gt(cfo, ni), gt(lt_lev.shift(lag), lt_lev),
+               gt(cur, cur.shift(lag)), gt(sh.shift(lag) * 1.0001, sh), gt(gm, gm.shift(lag)),
+               gt(turn, turn.shift(lag))]
+    avail = sum(s.notna().astype(int) for s in signals)
+    f_score = sum(s.fillna(0) for s in signals).where(avail >= 6)
     wc = (f["cur_assets"] - f["cur_liab"]) / a
     z = (1.2 * wc + 1.4 * f["retained"] / a + 3.3 * f["ebit"] / a
          + 0.6 * mcap / f["liabilities"].where(f["liabilities"] > 0) + 1.0 * f["revenue"] / a)
