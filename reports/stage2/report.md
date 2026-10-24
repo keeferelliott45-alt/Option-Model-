@@ -29,3 +29,11 @@ The filtered-historical-simulation shape was not re-centred, so stocks with a st
 their past drift into the forecast, against the pre-registered drift = 0. Bug fixed in
 `forecast/engine.shape` (used by both the live engine and test B/C) and Stage 2 rerun: A and D unchanged;
 B 50.9%/89.4% → 51.1%/90.4% (still PASS); C 45.3%/85.0% → 45.5%/86.5% (still fail). Verdicts unchanged.
+
+## Amendment 2 — test B2 (no-earnings windows)
+
+HAR-N coverage 50%/90%: dev 51.0% / 90.6% (n=48569), holdout 43.6% / 86.1% (n=3083). For comparison HAR: dev 53.9% / 92.3% (n=48569), holdout 46.3% / 88.4% (n=3083). Verdict: **PASS**.
+
+## Amendment 3 — test E (tail payoff calibration)
+
+Realized/model expected excess beyond the 95th percentile 0.93, below the 5th 1.22 (n=48569): **PASS**.
