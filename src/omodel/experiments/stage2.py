@@ -207,6 +207,63 @@ def run_a2() -> dict:
     return res
 
 
+def run_b2() -> dict:
+    """Amendment 2, test B2: calibration on no-earnings windows for HAR-N (fit on no-earnings windows only)."""
+    config.override(holdout_start=stage1.END + pd.Timedelta(days=1))
+    membership = universe.load_membership()
+    panel = panel_mod.build_panel(end=stage1.END, membership=membership)
+    ret = np.log(panel.close).diff()
+    mac = macro.load_macro_panel()
+    me = pf.month_ends(panel.dates)
+    me = me[me >= START]
+    raw = panel.raw_close.reindex(me)
+    mask = (panel.member.reindex(me).eq(True) & (raw >= 5)).stack(future_stack=True).to_numpy()
+    em = earnings_mask(ret, panel.dates)
+    ahead = em.astype(float).shift(-H).rolling(H, min_periods=1).max()
+    lc = np.log(panel.close)
+    frames = {**eng.har_features(ret, mac["vix"], mac["vix3m"]), "y": eng.har_target(ret, H), "r21": lc.shift(-H) - lc,
+              "ahead": ahead}
+    df = _stack(frames, me)[mask].reset_index(drop=True)
+    df["f_har"] = _walk_forward_har(df)
+    quiet = df["ahead"] == 0
+    df["f_harn"] = np.nan
+    df.loc[quiet, "f_harn"] = _walk_forward_har(df[quiet].reset_index(drop=True)).to_numpy()
+    rng = np.random.default_rng(20261024)
+    pits = {"f_har": np.full(len(df), np.nan), "f_harn": np.full(len(df), np.nan)}
+    for t, g in df[quiet].groupby("ticker"):
+        z = pd.Series(eng.ewma_z(ret[t].to_numpy()), index=ret.index)
+        for year, gy in g.groupby(g["date"].dt.year):
+            hist = z[(z.index >= pd.Timestamp(f"{year - eng.FHS_YEARS}-01-01")) & (z.index < pd.Timestamp(f"{year}-01-01"))]
+            if hist.notna().sum() < 250:
+                continue
+            b = eng.shape(eng.bank(hist.to_numpy(), H, BANK_N, rng), H)
+            for col in pits:
+                x = (gy["r21"] / np.sqrt(gy[col] / 252)).to_numpy()
+                ok = np.isfinite(x)
+                pits[col][gy.index[ok]] = (b[None, :] <= x[ok, None]).mean(axis=1)
+
+    def cov(col, period):
+        sel = (df["date"] >= period[0]) & (df["date"] <= period[1]) & quiet
+        s = pd.Series(pits[col])[sel].dropna()
+        return {"n": int(len(s)), "cov50": float(((s > 0.25) & (s < 0.75)).mean()),
+                "cov90": float(((s > 0.05) & (s < 0.95)).mean())}
+
+    dev_p = (START, stage1.DEV_END)
+    res = {"harn_dev": cov("f_harn", dev_p), "harn_holdout": cov("f_harn", stage1.HOLDOUT),
+           "har_dev": cov("f_har", dev_p), "har_holdout": cov("f_har", stage1.HOLDOUT)}
+    d = res["harn_dev"]
+    res["passed"] = bool(abs(d["cov50"] - 0.5) <= 0.03 and abs(d["cov90"] - 0.9) <= 0.03)
+    out = config.settings().reports_dir / "stage2"
+    (out / "b2_results.json").write_text(json.dumps(res, indent=2), encoding="utf-8")
+    f = lambda c: f"{100 * c['cov50']:.1f}% / {100 * c['cov90']:.1f}% (n={c['n']})"
+    with (out / "report.md").open("a", encoding="utf-8") as fh:
+        fh.write(f"\n## Amendment 2 — test B2 (no-earnings windows)\n\n"
+                 f"HAR-N coverage 50%/90%: dev {f(res['harn_dev'])}, holdout {f(res['harn_holdout'])}. "
+                 f"For comparison HAR: dev {f(res['har_dev'])}, holdout {f(res['har_holdout'])}. "
+                 f"Verdict: {'**PASS**' if res['passed'] else 'fail'}.\n")
+    return res
+
+
 def _crash_test(panel, df: pd.DataFrame, me: pd.DatetimeIndex, membership) -> dict:
     tickers = list(panel.close.columns)
     fund = fu.fundamental_panel(tickers, me)
