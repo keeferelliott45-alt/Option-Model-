@@ -153,6 +153,60 @@ def run() -> dict:
     return res
 
 
+def earnings_mask(ret: pd.DataFrame, dates: pd.DatetimeIndex) -> pd.DataFrame:
+    """True on 8-K 2.02 effective days and the following day (earnings-jump days)."""
+    cik = sec.ticker_to_cik()
+    m = pd.DataFrame(False, index=ret.index, columns=ret.columns)
+    pos = pd.Series(np.arange(len(dates)), index=dates)
+    for t in ret.columns:
+        c = cik.get(t.upper())
+        subs = sec.load_submissions(c) if c else None
+        if subs is None or not len(subs):
+            continue
+        p = pos.reindex(sec.earnings_days(subs, dates)).dropna().astype(int).to_numpy()
+        p = np.unique(np.concatenate([p, p + 1]))
+        m.iloc[p[p < len(dates)], m.columns.get_loc(t)] = True
+    return m
+
+
+def run_a2() -> dict:
+    """Amendment 1, test A2: HAR-X (earnings days excluded from RV inputs) vs HAR on non-earnings windows."""
+    config.override(holdout_start=stage1.END + pd.Timedelta(days=1))
+    membership = universe.load_membership()
+    panel = panel_mod.build_panel(end=stage1.END, membership=membership)
+    ret = np.log(panel.close).diff()
+    mac = macro.load_macro_panel()
+    me = pf.month_ends(panel.dates)
+    me = me[me >= START]
+    raw = panel.raw_close.reindex(me)
+    mask = (panel.member.reindex(me).eq(True) & (raw >= 5)).stack(future_stack=True).to_numpy()
+    em = earnings_mask(ret, panel.dates)
+    ahead = em.astype(float).shift(-H).rolling(H, min_periods=1).max().reindex(me).stack(future_stack=True).to_numpy()
+    y = eng.har_target(ret, H)
+    dfs = {}
+    for name, r in (("har", ret), ("harx", ret.mask(em))):
+        frames = {**eng.har_features(r, mac["vix"], mac["vix3m"]), "y": y}
+        df = _stack(frames, me)[mask].reset_index(drop=True)
+        df["f"] = _walk_forward_har(df)
+        dfs[name] = df
+    a, b = dfs["har"], dfs["harx"]
+    keep = (ahead[mask] == 0) & a["f"].notna().to_numpy() & b["f"].notna().to_numpy() & a["y"].notna().to_numpy()
+    rv2 = np.exp(2 * a["y"].to_numpy())
+    d = pd.Series(_qlike(rv2, b["f"].to_numpy()) - _qlike(rv2, a["f"].to_numpy()), index=a.index)[keep]
+    monthly = d.groupby(a.loc[keep, "date"]).mean()
+    res = _period_test(monthly, -1, 2)
+    res["passed"] = bool(res["mean"] < 0 and res["t"] <= -2 and res["subs_right"] >= 2 and res["holdout_mean"] < 0)
+    res["n_obs"] = int(keep.sum())
+    out = config.settings().reports_dir / "stage2"
+    (out / "a2_results.json").write_text(json.dumps(res, indent=2, default=str), encoding="utf-8")
+    with (out / "report.md").open("a", encoding="utf-8") as fh:
+        fh.write(f"\n## Amendment 1 — test A2 (HAR-X vs HAR, non-earnings windows)\n\n"
+                 f"Mean QLIKE difference {res['mean']:+.4f} (negative = HAR-X better), NW t {res['t']:+.2f}, "
+                 f"{res['months']} months, {res['n_obs']} stock-months, sub-periods right {res['subs_right']}/3, "
+                 f"holdout {res['holdout_mean']:+.4f}: {'**PASS**' if res['passed'] else 'fail'}.\n")
+    return res
+
+
 def _crash_test(panel, df: pd.DataFrame, me: pd.DatetimeIndex, membership) -> dict:
     tickers = list(panel.close.columns)
     fund = fu.fundamental_panel(tickers, me)
