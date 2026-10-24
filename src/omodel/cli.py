@@ -89,6 +89,22 @@ def _phase1(args: argparse.Namespace) -> int:
     return 0
 
 
+def _shortlist(args: argparse.Namespace) -> int:
+    from omodel.experiments import shortlist
+
+    ranked = shortlist.run(refresh=not args.no_refresh)
+    print(f"shortlist: {len(ranked)} contract(s) cleared the hurdles; report in reports/shortlist/")
+    return 0
+
+
+def _h2bc(args: argparse.Namespace) -> int:
+    from omodel.experiments import h2bc
+
+    res = h2bc.run()
+    print(f"h2bc verdict: {res['verdict']}")
+    return 0
+
+
 def _h2a(args: argparse.Namespace) -> int:
     from omodel.experiments import h2a
 
@@ -129,6 +145,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("snapshot-options", help="Store today's CBOE delayed option chains (run after ~16:30 ET).")
     p.add_argument("--tickers", nargs="+", help="Default: current S&P 500 members.")
     p.set_defaults(func=_snapshot_options)
+
+    p = sub.add_parser("shortlist", help="Score today's events through all five layers (paper only).")
+    p.add_argument("--no-refresh", action="store_true", help="Use cached prices and macro.")
+    p.set_defaults(func=_shortlist)
+
+    p = sub.add_parser("h2bc", help="Run the one-shot H2b/H2c evaluation (refuses before 2027-04-30).")
+    p.set_defaults(func=_h2bc)
 
     p = sub.add_parser("h2a", help="Run the one-shot H2a holdout drift test (needs the holdout unlocked).")
     p.set_defaults(func=_h2a)

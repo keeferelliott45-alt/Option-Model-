@@ -1,11 +1,18 @@
 # Parameter registry
 
-44 parameters, 0 fit to data. Data-fit parameters are only ever chosen inside walk-forward fit windows and get the most out-of-sample scrutiny.
+66 parameters, 0 fit to data. Data-fit parameters are only ever chosen inside walk-forward fit windows and get the most out-of-sample scrutiny.
 
 | Parameter | Value | Source | Layer | Rationale |
 |---|---|---|---|---|
+| `BREADTH_MA` | `50` | theory | L1 | Thesis: % of members above 50-day MA. |
+| `CORR_WINDOW` | `60` | convention | L1 | Days for average pairwise correlation. |
+| `HIGH_CORR` | `0.35` | convention | L1 | Label threshold: 'market trading as one'. |
+| `HIGH_TENSION` | `0.5` | convention | L1 | Label threshold on the tension z-index. |
 | `MACRO_FFILL_LIMIT` | `3` | convention | L1 | Bridge holiday-calendar mismatches between sources only; longer gaps stay NaN so stale macro is never used. |
 | `MACRO_START_YEAR` | `1998` | convention | L1 | Two years of warm-up before dev_start (2000) so trailing macro features are defined from day one. |
+| `REGIME_Z_MIN_OBS` | `252` | convention | L1 | History before an expanding z-score exists. |
+| `TENSION_HALFLIFE` | `10` | theory | L1 | Days for old tension to fade unless refreshed (thesis decay function). |
+| `VIX_HIGH` | `20.0` | theory | L1 | Conventional calm/stressed VIX boundary (H2c split). |
 | `BETA_MIN_OBS` | `60` | convention | L2 | Minimum valid days inside the beta window before a fit is trusted. |
 | `BETA_WINDOW` | `90` | theory | L2 | Thesis: rolling 60-90d betas; upper end for estimate stability. |
 | `EVENT_COOLDOWN` | `15` | convention | L2 | Suppress same-ticker events inside the primary horizon to avoid double counting. |
@@ -18,16 +25,31 @@
 | `SEC_NEWS_WINDOW` | `1` | convention | L2 | News effective the prior session can still drive day-t moves, so day t is flagged for effective dates t and t-1. |
 | `VOLUME_Z_WINDOW` | `20` | theory | L2 | Thesis: volume vs 20-day average. |
 | `HORIZONS` | `(1, 5, 15, 30)` | theory | L2/L4 | Thesis: forward returns at 1, 5, 15, 30 trading days. |
+| `EARNINGS_BUFFER_DAYS` | `10` | convention | L3 | Slack around the estimated next release date. |
+| `EARNINGS_CYCLE_DAYS` | `91` | theory | L3 | Quarterly reporting: next release estimated one quarter after the last. |
+| `MAX_ND_EBITDA` | `4.0` | theory | L3 | Leverage above this is a refinancing risk. |
+| `MIN_INT_COVERAGE` | `1.5` | theory | L3 | Operating income / interest floor. |
+| `SOFT_GM_DROP` | `-0.02` | theory | L3 | Gross margin down > 2pp YoY: soft veto. |
+| `SOFT_ND_EBITDA` | `3.0` | theory | L3 | Elevated leverage: soft veto. |
+| `SOFT_PS_VS_OWN` | `1.3` | theory | L3 | P/S above 1.3x its own 3-year median: expensive going in, soft veto. |
+| `L4_BINS` | `201` | convention | L4 | Discrete S_T buckets in the output. |
+| `L4_MIN_HISTORY` | `100` | theory | L4 | Fewer comparable past events than this and no distribution is stated. |
+| `L4_PRIOR_STRENGTH` | `30` | theory | L4 | Pseudo-events: stock- and regime-specific history gets weight n/(n+30). |
+| `L4_UNCERTAIN_WIDEN` | `1.25` | theory | L4 | SOFT/UNKNOWN fundamentals widen the distribution; never shift its center. |
 | `COMMISSION_PER_CONTRACT` | `0.65` | convention | L5 | Typical retail per-contract commission, charged on open and close. |
 | `CONTRACT_MULTIPLIER` | `100` | convention | L5 | US equity options: 100 shares. |
 | `DELTA_EDGES` | `(0.05, 0.2, 0.4, 0.6, 0.8)` | theory | L5 | Thesis delta buckets; reported separately, never pooled. |
 | `EV_HURDLE` | `0.05` | theory | L5 | Min EV as a fraction of max loss to surface. |
 | `FAR_OTM_EV_HURDLE` | `0.15` | theory | L5 | Higher bar for 0.05-0.20 delta: most fragile to distribution error. |
+| `H2C_SHORT_DELTA` | `0.3` | theory | L5 | H2c fixed rule: short call delta. |
 | `MAX_SPREAD_PCT` | `0.1` | convention | L5 | Max (ask-bid)/mid per leg: an edge that cannot be filled is not an edge. |
 | `MAX_SPREAD_WIDTH_STEPS` | `4` | convention | L5 | Vertical spreads span at most this many listed strikes. |
 | `MIN_OPEN_INTEREST` | `100` | convention | L5 | Liquidity floor per leg. |
 | `MIN_VOLUME` | `10` | convention | L5 | Liquidity floor per leg (day volume). |
 | `RISK_FREE_DEFAULT` | `0.04` | convention | L5 | Fallback rate when no Treasury yield is passed in. |
+| `SHORTLIST_MAX_DTE` | `45` | theory | L5 | Thesis v2 expiry window (H2c rule). |
+| `SHORTLIST_MIN_DTE` | `21` | theory | L5 | Thesis v2 expiry window (H2c rule). |
+| `SHORTLIST_TOP_N` | `10` | convention | L5 | Contracts shown per day. |
 | `BOOTSTRAP_REPS` | `2000` | convention | backtest | Cluster-bootstrap replications for confidence intervals. |
 | `CI_LEVEL` | `0.95` | convention | backtest | Two-sided confidence level. |
 | `CLUSTER_FREQ` | `'M'` | convention | backtest | Calendar-month date clusters: wider than the 15d primary horizon, so overlapping forward windows and crash-clustered events mostly share a cluster. |

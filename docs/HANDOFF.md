@@ -201,3 +201,18 @@ registered), regime and fundamental adjustments, rescaled to current vol; output
 Report EV under this distribution **minus** EV under the unconditional distribution, so variance-risk-premium
 "edge" is not mistaken for overreaction edge. One-sentence thesis per contract where every number traces to a
 layer. Daily shortlist → paper trade only. The system never places orders.
+
+## Status — 2026-10-24 (thesis v2, full pipeline built)
+
+- v1 Phase 1: FAIL (no reversion). Thesis v2 pre-registered: `docs/PREREGISTRATION_THESIS_V2.md`.
+- H2a (drift continues, one-shot on the holdout): **PASS**, `reports/h2a/report.md`. Holdout consumed.
+- All five layers built: `l1_regime`, `l2_decomposition`, `l3_fundamentals` (SEC XBRL, point-in-time by
+  filing date, earnings-in-expiry HARD veto), `l4_distribution` (empirical post-event history, partial pooling
+  by stock and VIX regime, SOFT/UNKNOWN widens only), `l5_options` (BS/IV, Breeden-Litzenberger, defined-risk
+  verticals at bid/ask, delta buckets, ranking).
+- Daily job `scripts/snapshot_daily.cmd` (Windows task "OptionModel Daily Snapshot", weekdays 22:45):
+  saves CBOE chains, then `omodel shortlist` writes `reports/shortlist/<date>.md|csv`. **Paper only and
+  UNVALIDATED** until H2b/H2c.
+- `omodel h2bc` is frozen code for the single H2b/H2c evaluation; it refuses to run before **2027-04-30**.
+  If it reports INSUFFICIENT, write a dated amendment with the next date before looking at any number.
+- Do not change L3/L4/L5 parameters based on shortlist outcomes before the H2b/H2c evaluation.
