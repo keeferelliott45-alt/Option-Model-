@@ -264,6 +264,55 @@ def run_b2() -> dict:
     return res
 
 
+def run_e() -> dict:
+    """Amendment 3, test E: tail payoff calibration beyond the 5th/95th percentiles (HAR-N, no-earnings windows)."""
+    config.override(holdout_start=stage1.END + pd.Timedelta(days=1))
+    membership = universe.load_membership()
+    panel = panel_mod.build_panel(end=stage1.END, membership=membership)
+    ret = np.log(panel.close).diff()
+    mac = macro.load_macro_panel()
+    me = pf.month_ends(panel.dates)
+    me = me[me >= START]
+    raw = panel.raw_close.reindex(me)
+    mask = (panel.member.reindex(me).eq(True) & (raw >= 5)).stack(future_stack=True).to_numpy()
+    em = earnings_mask(ret, panel.dates)
+    ahead = em.astype(float).shift(-H).rolling(H, min_periods=1).max()
+    lc = np.log(panel.close)
+    frames = {**eng.har_features(ret, mac["vix"], mac["vix3m"]), "y": eng.har_target(ret, H), "r21": lc.shift(-H) - lc,
+              "ahead": ahead}
+    df = _stack(frames, me)[mask].reset_index(drop=True)
+    df = df[df["ahead"] == 0].reset_index(drop=True)
+    df["f"] = _walk_forward_har(df)
+    df = df[(df["date"] <= stage1.DEV_END) & df["f"].notna() & df["r21"].notna()]
+    rng = np.random.default_rng(20261024)
+    acc = {"m_up": 0.0, "r_up": 0.0, "m_dn": 0.0, "r_dn": 0.0, "n": 0}
+    for t, g in df.groupby("ticker"):
+        z = pd.Series(eng.ewma_z(ret[t].to_numpy()), index=ret.index)
+        for year, gy in g.groupby(g["date"].dt.year):
+            hist = z[(z.index >= pd.Timestamp(f"{year - eng.FHS_YEARS}-01-01")) & (z.index < pd.Timestamp(f"{year}-01-01"))]
+            if hist.notna().sum() < 250:
+                continue
+            b = eng.shape(eng.bank(hist.to_numpy(), H, BANK_N, rng), H)
+            q5, q95 = np.quantile(b, [0.05, 0.95])
+            m_up, m_dn = np.maximum(b - q95, 0).mean(), np.maximum(q5 - b, 0).mean()
+            sc = np.sqrt(gy["f"].to_numpy() / 252)
+            x = gy["r21"].to_numpy()
+            acc["m_up"] += float((m_up * sc).sum())
+            acc["m_dn"] += float((m_dn * sc).sum())
+            acc["r_up"] += float(np.maximum(x - q95 * sc, 0).sum())
+            acc["r_dn"] += float(np.maximum(q5 * sc - x, 0).sum())
+            acc["n"] += len(gy)
+    res = {"n": acc["n"], "upper_ratio": acc["r_up"] / acc["m_up"], "lower_ratio": acc["r_dn"] / acc["m_dn"]}
+    res["passed"] = bool(0.8 <= res["upper_ratio"] <= 1.25 and 0.8 <= res["lower_ratio"] <= 1.25)
+    out = config.settings().reports_dir / "stage2"
+    (out / "e_results.json").write_text(json.dumps(res, indent=2), encoding="utf-8")
+    with (out / "report.md").open("a", encoding="utf-8") as fh:
+        fh.write(f"\n## Amendment 3 — test E (tail payoff calibration)\n\nRealized/model expected excess beyond the "
+                 f"95th percentile {res['upper_ratio']:.2f}, below the 5th {res['lower_ratio']:.2f} (n={res['n']}): "
+                 f"{'**PASS**' if res['passed'] else 'fail'}.\n")
+    return res
+
+
 def _crash_test(panel, df: pd.DataFrame, me: pd.DatetimeIndex, membership) -> dict:
     tickers = list(panel.close.columns)
     fund = fu.fundamental_panel(tickers, me)
