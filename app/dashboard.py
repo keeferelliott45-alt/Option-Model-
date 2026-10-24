@@ -1,4 +1,6 @@
 import json
+
+import numpy as np
 from pathlib import Path
 
 import pandas as pd
@@ -55,16 +57,29 @@ with tab_today:
             bull = {"long_call", "bull_call_debit", "bull_put_credit"}
             picks["direction"] = picks["name"].map(lambda n: "bullish" if n in bull else "bearish")
             view = picks[picks["direction"].isin(side)].copy()
+            if "score" in view:
+                view["Strength"] = pd.cut(view["score"], [-np.inf, 0.05, 0.15, np.inf],
+                                          labels=["marginal", "weak", "strong"]).astype(str)
+                strong = (view["Strength"] == "strong").sum()
+                if strong == 0:
+                    st.info("No strong trade today: every pick's expected profit is small next to its risk. "
+                            "Waiting is a valid choice.")
             view["EV % of risk"] = (100 * view["ev_pct_risk"]).round(1)
-            view["P(profit) %"] = (100 * view["prob_profit"]).round(1)
-            view["model vol %"] = (100 * view["vol_fc"]).round(1)
+            for src, dst in (("prob_profit", "P(profit) %"), ("pop_model", "Model P %"), ("pop_market", "Market P %")):
+                if src in view:
+                    view[dst] = (100 * view[src]).round(1)
+            view["Model vol %"] = (100 * view["vol_fc"]).round(1)
             cols = {"ticker": "Stock", "name": "Structure", "legs": "Legs", "expiry": "Expiry", "dte": "Days",
-                    "ev": "EV $", "max_loss": "Max loss $", "EV % of risk": "EV % of risk",
-                    "P(profit) %": "P(profit) %", "bucket": "Delta bucket", "model vol %": "Model vol %",
+                    "Strength": "Strength", "ev": "EV $ (blend)", "ev_model": "EV $ model", "ev_market": "EV $ market",
+                    "max_loss": "Max loss $", "EV % of risk": "EV % of risk", "Model P %": "Model P %",
+                    "Market P %": "Market P %", "bucket": "Delta bucket", "Model vol %": "Model vol %",
                     "veto": "Fundamentals", "fundamentals": "Notes"}
+            cols = {k: v for k, v in cols.items() if k in view}
             st.dataframe(view[list(cols)].rename(columns=cols).round(2), hide_index=True, use_container_width=True)
-            st.caption("EV = expected profit after buying at the ask, selling at the bid and commissions. "
-                       "0.05-0.20 delta contracts need a higher EV bar: they depend most on the forecast's tails.")
+            st.caption("EV after buying at the ask, selling at the bid and commissions. 'Market' = what you'd make if "
+                       "the option quotes are exactly right (always about minus the spread). 'Blend' = 50/50 of model "
+                       "and market, used for ranking until the forward test proves the model. Strength = blended EV "
+                       "divided by the spread of outcomes (per-trade Sharpe): strong ≥ 0.15, weak 0.05-0.15.")
 
 with tab_history:
     if days:

@@ -68,20 +68,30 @@ def implied_vol(price, S, K, T, cp, r: float | None = None, q: float = 0.0, iter
     return np.where(ok, iv, np.nan)
 
 
+SMILE_DEGREE = params.register("SMILE_DEGREE", 3, "convention", "L5",
+                               "Weighted cubic in log-moneyness: smooth enough to ignore wing noise, flexible "
+                               "enough for skew. Flat beyond the quoted range.")
+
+
 def risk_neutral_density(strikes, ivs, S: float, T: float, r: float | None = None, q: float = 0.0,
-                         n_grid: int = 801, span: float = 4.0) -> tuple[np.ndarray, np.ndarray]:
-    """Breeden-Litzenberger on a quadratic-in-log-moneyness IV smile: returns (S_T grid, probability mass)."""
+                         n_grid: int = 801, span: float = 4.0, weights=None) -> tuple[np.ndarray, np.ndarray]:
+    """Breeden-Litzenberger on a liquidity-weighted smooth smile: returns (S_T grid, probability mass).
+
+    Following noisy wing quotes exactly creates spikes in the second derivative, so the smile is a weighted
+    low-order fit; quotes with tight markets dominate it.
+    """
     r = RISK_FREE if r is None else r
     k, v = np.asarray(strikes, dtype=float), np.asarray(ivs, dtype=float)
-    ok = np.isfinite(k) & np.isfinite(v) & (v > 0)
-    if ok.sum() < 3:
-        raise ValueError("need at least 3 finite IVs to fit a smile")
-    x = np.log(k[ok] / S)
-    coef = np.polyfit(x, v[ok], 2)
+    w = np.ones(len(k)) if weights is None else np.asarray(weights, dtype=float)
+    ok = np.isfinite(k) & np.isfinite(v) & (v > 0) & np.isfinite(w) & (w > 0)
+    if ok.sum() < SMILE_DEGREE + 2:
+        raise ValueError("too few usable IVs to fit a smile")
+    x, v, w = np.log(k[ok] / S), v[ok], w[ok]
+    coef = np.polyfit(x, v, SMILE_DEGREE, w=np.sqrt(w))
     atm = max(float(np.polyval(coef, 0.0)), 0.05)
     half = span * atm * np.sqrt(T)
     grid = S * np.exp(np.linspace(-half, half, n_grid))
-    gx = np.clip(np.log(grid / S), x.min(), x.max())  # flat extrapolation beyond the quoted wings
+    gx = np.clip(np.log(grid / S), x.min(), x.max())
     smile = np.clip(np.polyval(coef, gx), _IV_LO, _IV_HI)
     calls = bs_price(S, grid, T, smile, "C", r, q)
     dens = np.exp(r * T) * np.gradient(np.gradient(calls, grid), grid)
@@ -190,63 +200,103 @@ def vertical_spreads(chain: pd.DataFrame, expiry: pd.Timestamp, max_steps: int |
     return out
 
 
-def scan_expiry(chain: pd.DataFrame, grid: np.ndarray, probs: np.ndarray, max_steps: int | None = None) -> pd.DataFrame:
-    """Vectorised EV for every liquid single and vertical in one expiry; fills at bid/ask, commissions both ways."""
-    steps = MAX_WIDTH_STEPS if max_steps is None else max_steps
-    cdf = np.concatenate([[0.0], np.cumsum(probs)])
+MARKET_WEIGHT = params.register(
+    "MARKET_WEIGHT", 0.5, "convention", "L5",
+    "Until the forward test proves the model, trades are scored on a 50/50 blend of the model's forecast and the "
+    "market-implied (Breeden-Litzenberger) distribution: a pick must survive the market's own view.")
 
-    def p_below(x):
-        return cdf[np.searchsorted(grid, np.asarray(x, dtype=float), side="left")]
 
-    rows = []
-    c2 = 2 * COMMISSION   # one contract: open + close
-    c4 = 4 * COMMISSION   # two legs: open + close
+def _candidates(chain: pd.DataFrame, steps: int) -> list[dict]:
+    """Per option side: strikes plus index arrays describing every single and vertical as s*(I[a] - I[b])."""
+    out = []
+    c2, c4 = 2 * COMMISSION, 4 * COMMISSION
     for cp in ("C", "P"):
         side = chain[(chain["cp"] == cp) & liquid(chain)].sort_values("strike").reset_index(drop=True)
-        if side.empty:
+        n = len(side)
+        if not n:
             continue
         K = side["strike"].to_numpy(float)
         bid, ask, dlt = (side[c].to_numpy(float) for c in ("bid", "ask", "delta"))
-        intrinsic = np.maximum(grid[None, :] - K[:, None], 0) if cp == "C" else np.maximum(K[:, None] - grid[None, :], 0)
-        E = intrinsic @ probs * MULTIPLIER
-        ev = E - ask * MULTIPLIER - c2
-        be = K + ask if cp == "C" else K - ask
-        pop = 1 - p_below(be) if cp == "C" else p_below(be)
-        for i in range(len(K)):
-            rows.append(("long_call" if cp == "C" else "long_put", f"+{cp}{K[i]:g}", ev[i], ask[i] * MULTIPLIER + c2,
-                         np.inf, pop[i], dlt[i]))
-        n = len(K)
+        mid = np.append((bid + ask) / 2, 0.0)  # index n = "no leg"
+        rec = {k: [] for k in ("name", "legs", "a", "b", "s", "cost", "max_loss", "max_gain", "delta")}
+
+        def add(name, legs, a, b, s, cost, max_loss, max_gain, delta):
+            for k, v in zip(rec, (name, legs, a, b, s, cost, max_loss, max_gain, delta)):
+                rec[k].append(v)
+
         for i in range(n):
+            add("long_call" if cp == "C" else "long_put", f"+{cp}{K[i]:g}", i, n, 1.0,
+                ask[i] * MULTIPLIER + c2, ask[i] * MULTIPLIER + c2, np.inf, dlt[i])
             for j in range(i + 1, min(i + 1 + steps, n)):
-                width = (K[j] - K[i]) * MULTIPLIER
+                w = (K[j] - K[i]) * MULTIPLIER
                 if cp == "C":
-                    debit = (ask[i] - bid[j]) * MULTIPLIER
-                    rows.append(("bull_call_debit", f"+C{K[i]:g}/-C{K[j]:g}", E[i] - E[j] - debit - c4,
-                                 debit + c4, width - debit - c4, 1 - p_below(K[i] + debit / MULTIPLIER), dlt[i]))
-                    credit = (bid[i] - ask[j]) * MULTIPLIER
-                    rows.append(("bear_call_credit", f"-C{K[i]:g}/+C{K[j]:g}", E[j] - E[i] + credit - c4,
-                                 width - credit + c4, credit - c4, p_below(K[i] + credit / MULTIPLIER), dlt[i]))
+                    d = (ask[i] - bid[j]) * MULTIPLIER
+                    add("bull_call_debit", f"+C{K[i]:g}/-C{K[j]:g}", i, j, 1.0, d + c4, d + c4, w - d - c4, dlt[i])
+                    c = (bid[i] - ask[j]) * MULTIPLIER
+                    add("bear_call_credit", f"-C{K[i]:g}/+C{K[j]:g}", i, j, -1.0, -c + c4, w - c + c4, c - c4, dlt[i])
                 else:
-                    credit = (bid[j] - ask[i]) * MULTIPLIER
-                    rows.append(("bull_put_credit", f"-P{K[j]:g}/+P{K[i]:g}", E[i] - E[j] + credit - c4,
-                                 width - credit + c4, credit - c4, 1 - p_below(K[j] - credit / MULTIPLIER), dlt[j]))
-                    debit = (ask[j] - bid[i]) * MULTIPLIER
-                    rows.append(("bear_put_debit", f"+P{K[j]:g}/-P{K[i]:g}", E[j] - E[i] - debit - c4,
-                                 debit + c4, width - debit - c4, p_below(K[j] - debit / MULTIPLIER), dlt[j]))
-    cols = ["name", "legs", "ev", "max_loss", "max_gain", "prob_profit", "delta"]
-    out = pd.DataFrame(rows, columns=cols)
+                    c = (bid[j] - ask[i]) * MULTIPLIER
+                    add("bull_put_credit", f"-P{K[j]:g}/+P{K[i]:g}", i, j, 1.0, -c + c4, w - c + c4, c - c4, dlt[j])
+                    d = (ask[j] - bid[i]) * MULTIPLIER
+                    add("bear_put_debit", f"+P{K[j]:g}/-P{K[i]:g}", j, i, 1.0, d + c4, d + c4, w - d - c4, dlt[j])
+        arr = {k: np.asarray(v) for k, v in rec.items()}
+        # The market's own fair value of the structure: what you'd make if the quotes are right.
+        arr["mid_value"] = arr["s"] * (mid[arr["a"]] - mid[arr["b"]]) * MULTIPLIER
+        out.append({"cp": cp, "K": K, **arr})
+    return out
+
+
+def _moments(c: dict, grid: np.ndarray, probs: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Mean, second moment and P(profit) of each candidate's P&L under a discrete S_T distribution."""
+    K = c["K"]
+    intr = np.maximum(grid[None, :] - K[:, None], 0) if c["cp"] == "C" else np.maximum(K[:, None] - grid[None, :], 0)
+    intr = np.vstack([intr, np.zeros(len(grid))])  # row n = "no leg"
+    pnl = c["s"][:, None] * (intr[c["a"]] - intr[c["b"]]) * MULTIPLIER - c["cost"][:, None]
+    return pnl @ probs, (pnl ** 2) @ probs, (pnl > 0) @ probs
+
+
+def scan_expiry(chain: pd.DataFrame, grid: np.ndarray, probs: np.ndarray, max_steps: int | None = None,
+                market: tuple[np.ndarray, np.ndarray] | None = None, market_weight: float | None = None) -> pd.DataFrame:
+    """Every liquid single and vertical in one expiry, scored under the model and (if given) the market density.
+
+    Fills: buy at ask, sell at bid, commissions on open and close. `ev`/`prob_profit`/`sd` are for the blend
+    (1 - w) * model + w * market; `score` = ev / sd, a per-trade Sharpe ratio that penalises lottery tickets.
+    """
+    steps = MAX_WIDTH_STEPS if max_steps is None else max_steps
+    w = MARKET_WEIGHT if market_weight is None else market_weight
+    frames = []
+    for c in _candidates(chain, steps):
+        m1, m2, pp = _moments(c, grid, probs)
+        # Market EV is anchored to the quotes (mid value - cost), exact by construction. The market density, when
+        # one can be built, supplies dispersion and P(profit); otherwise the model's are used for those two only.
+        d1, d2, kp = _moments(c, *market) if market is not None else (m1, m2, pp)
+        k1 = c["mid_value"] - c["cost"]
+        k2 = np.maximum(d2 - d1 ** 2, 0) + k1 ** 2
+        mean, second, pop = (1 - w) * m1 + w * k1, (1 - w) * m2 + w * k2, (1 - w) * pp + w * kp
+        frames.append(pd.DataFrame({
+            "name": c["name"], "legs": c["legs"], "ev": mean, "ev_model": m1, "ev_market": k1,
+            "max_loss": c["max_loss"], "max_gain": c["max_gain"], "prob_profit": pop, "pop_model": pp,
+            "pop_market": kp, "sd": np.sqrt(np.maximum(second - mean ** 2, 0)), "delta": c["delta"]}))
+    cols = ["name", "legs", "ev", "ev_model", "ev_market", "max_loss", "max_gain", "prob_profit", "pop_model",
+            "pop_market", "sd", "delta"]
+    out = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=cols)
     out[cols[2:]] = out[cols[2:]].astype(float)
     out = out[(out["max_loss"] > 0) & (out["max_gain"] > 0) & np.isfinite(out["ev"])]
     out["ev_pct_risk"] = out["ev"] / out["max_loss"]
+    out["score"] = out["ev"] / out["sd"].where(out["sd"] > 0)
     return out.reset_index(drop=True)
 
 
 def rank(candidates: list[dict]) -> pd.DataFrame:
-    """Rank by EV as % of max loss with a per-bucket hurdle; 0.80+ delta is excluded (no optionality left)."""
+    """EV % of max loss must clear a per-bucket hurdle; survivors are ordered by `score` (EV / sd) when present.
+
+    0.80+ delta is excluded (no optionality left) and < 0.05 delta is excluded (pure tail bets).
+    """
     df = pd.DataFrame(candidates)
     if df.empty:
         return df
     df["bucket"] = df["delta"].map(delta_bucket)
     hurdle = np.where(df["bucket"] == f"{DELTA_EDGES[0]:.2f}-{DELTA_EDGES[1]:.2f}", FAR_OTM_HURDLE, EV_HURDLE)
     keep = (df["ev_pct_risk"] >= hurdle) & (df["bucket"] != f"{DELTA_EDGES[-1]:.2f}+") & (df["bucket"] != "<0.05")
-    return df[keep].sort_values("ev_pct_risk", ascending=False).reset_index(drop=True)
+    key = "score" if "score" in df else "ev_pct_risk"
+    return df[keep].sort_values(key, ascending=False).reset_index(drop=True)

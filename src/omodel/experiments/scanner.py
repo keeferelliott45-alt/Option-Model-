@@ -29,6 +29,8 @@ POST_EARN_DAYS = params.register("SCAN_POST_EARNINGS_DAYS", 22, "theory", "scann
                                  "Skip a stock while its last earnings day is inside the RV22 input window.")
 IV_GUARD = params.register("SCAN_IV_GUARD", 1.5, "convention", "scanner",
                            "Hide contracts when model vol / market iv30 is outside [1/1.5, 1.5].")
+SMILE_MAX_SPREAD = params.register("SMILE_MAX_SPREAD", 0.25, "convention", "scanner",
+                                   "Quotes wider than 25% of mid are too noisy to shape the market density.")
 BULLISH = {"long_call", "bull_call_debit", "bull_put_credit"}
 BEARISH = {"long_put", "bear_put_debit", "bear_call_credit"}
 
@@ -114,8 +116,13 @@ def run(refresh: bool = True) -> pd.DataFrame:
                 continue  # strong disagreement with the market = missing information, not edge
             ratio = fit.crash_ratio(models, 0.5 * np.log(float(fit.har_vol(models, 21, X.loc[[t]])[0]) ** 2),
                                     np.log(max(spct.get(t, np.nan), 1e-5)) if t in spct else np.nan)
-            grid, probs = eng.price_distribution(spot, vol, h, z, crash_ratio=ratio, seed=zlib.crc32(f"{t}{expiry.date()}".encode()))
-            cand = l5.scan_expiry(chain[chain["expiry"] == expiry], grid, probs)
+            T = max((expiry - asof).days, 1) / 365
+            ex_chain = chain[(chain["expiry"] == expiry) & (chain["bid"] > 0)]
+            fwd = spot * np.exp((l5.RISK_FREE - _implied_carry(ex_chain, spot, T)) * T)
+            grid, probs = eng.price_distribution(spot, vol, h, z, crash_ratio=ratio, forward=fwd,
+                                                 seed=zlib.crc32(f"{t}{expiry.date()}".encode()))
+            cand = l5.scan_expiry(chain[chain["expiry"] == expiry], grid, probs,
+                                  market=_market_density(chain, expiry, spot, asof))
             if cand.empty:
                 continue
             cand = cand.assign(ticker=t, expiry=expiry, dte=int((expiry - asof).days), spot=spot, vol_fc=vol,
@@ -125,6 +132,38 @@ def run(refresh: bool = True) -> pd.DataFrame:
     picks = _select(allc, facts_by, asof)
     _write(picks, allc, asof, regime)
     return picks
+
+
+def _market_density(chain: pd.DataFrame, expiry: pd.Timestamp, spot: float, asof: pd.Timestamp):
+    """Market-implied S_T distribution from out-of-the-money IVs (Breeden-Litzenberger); None if too few quotes."""
+    ex = chain[(chain["expiry"] == expiry) & (chain["iv"] > 0) & (chain["bid"] > 0)]
+    spread = (ex["ask"] - ex["bid"]) / ex["mid"].where(ex["mid"] > 0)
+    ex = ex.assign(spread=spread)[spread <= SMILE_MAX_SPREAD]
+    otm = ex[((ex["cp"] == "C") & (ex["strike"] >= spot)) | ((ex["cp"] == "P") & (ex["strike"] < spot))]
+    if len(otm) < 6:
+        return None
+    T = max((expiry - asof).days, 1) / 365
+    q = _implied_carry(ex, spot, T)
+    try:
+        return l5.risk_neutral_density(otm["strike"].to_numpy(), otm["iv"].to_numpy(), spot, T, q=q,
+                                       weights=1 / otm["spread"].clip(lower=0.01).to_numpy())
+    except ValueError:
+        return None
+
+
+def _implied_carry(ex: pd.DataFrame, spot: float, T: float) -> float:
+    """Dividend yield implied by put-call parity at the strike nearest spot: F = K + e^{rT}(C - P)."""
+    std = ex[ex["standard"]] if "standard" in ex else ex  # adjusted (non-standard) contracts reuse strikes
+    calls = std[std["cp"] == "C"].groupby("strike")["mid"].mean()
+    puts = std[std["cp"] == "P"].groupby("strike")["mid"].mean()
+    both = calls.index.intersection(puts.index)
+    if not len(both):
+        return 0.0
+    near = both[np.argsort(np.abs(both - spot))[:5]]  # median over 5 strikes: one wide ATM quote is too noisy
+    fwd = float(np.median(near + np.exp(l5.RISK_FREE * T) * (calls[near].to_numpy() - puts[near].to_numpy())))
+    if fwd <= 0:
+        return 0.0
+    return float(np.clip(l5.RISK_FREE - np.log(fwd / spot) / T, -0.1, 0.1))
 
 
 def _sectors(panel, ret) -> dict[str, str]:
@@ -167,6 +206,9 @@ def _write(picks: pd.DataFrame, allc: pd.DataFrame, asof: pd.Timestamp, regime: 
     out = config.settings().reports_dir / "scanner"
     out.mkdir(parents=True, exist_ok=True)
     picks.to_csv(out / f"{asof.date()}.csv", index=False)
+    if len(allc):
+        (config.settings().data_dir / "scanner").mkdir(parents=True, exist_ok=True)
+        allc.to_parquet(config.settings().data_dir / "scanner" / f"all_{asof.date()}.parquet")
     meta = {"asof": str(asof.date()), "regime": regime, "contracts_scored": int(len(allc)),
             "tickers_scored": int(allc["ticker"].nunique()) if len(allc) else 0, "picks": int(len(picks)),
             "status": "UNVALIDATED - paper only until the Stage 3 forward test"}

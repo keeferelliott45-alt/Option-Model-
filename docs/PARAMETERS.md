@@ -1,6 +1,6 @@
 # Parameter registry
 
-66 parameters, 0 fit to data. Data-fit parameters are only ever chosen inside walk-forward fit windows and get the most out-of-sample scrutiny.
+82 parameters, 0 fit to data. Data-fit parameters are only ever chosen inside walk-forward fit windows and get the most out-of-sample scrutiny.
 
 | Parameter | Value | Source | Layer | Rationale |
 |---|---|---|---|---|
@@ -42,6 +42,7 @@
 | `EV_HURDLE` | `0.05` | theory | L5 | Min EV as a fraction of max loss to surface. |
 | `FAR_OTM_EV_HURDLE` | `0.15` | theory | L5 | Higher bar for 0.05-0.20 delta: most fragile to distribution error. |
 | `H2C_SHORT_DELTA` | `0.3` | theory | L5 | H2c fixed rule: short call delta. |
+| `MARKET_WEIGHT` | `0.5` | convention | L5 | Until the forward test proves the model, trades are scored on a 50/50 blend of the model's forecast and the market-implied (Breeden-Litzenberger) distribution: a pick must survive the market's own view. |
 | `MAX_SPREAD_PCT` | `0.1` | convention | L5 | Max (ask-bid)/mid per leg: an edge that cannot be filled is not an edge. |
 | `MAX_SPREAD_WIDTH_STEPS` | `4` | convention | L5 | Vertical spreads span at most this many listed strikes. |
 | `MIN_OPEN_INTEREST` | `100` | convention | L5 | Liquidity floor per leg. |
@@ -50,6 +51,7 @@
 | `SHORTLIST_MAX_DTE` | `45` | theory | L5 | Thesis v2 expiry window (H2c rule). |
 | `SHORTLIST_MIN_DTE` | `21` | theory | L5 | Thesis v2 expiry window (H2c rule). |
 | `SHORTLIST_TOP_N` | `10` | convention | L5 | Contracts shown per day. |
+| `SMILE_DEGREE` | `3` | convention | L5 | Weighted cubic in log-moneyness: smooth enough to ignore wing noise, flexible enough for skew. Flat beyond the quoted range. |
 | `BOOTSTRAP_REPS` | `2000` | convention | backtest | Cluster-bootstrap replications for confidence intervals. |
 | `CI_LEVEL` | `0.95` | convention | backtest | Two-sided confidence level. |
 | `CLUSTER_FREQ` | `'M'` | convention | backtest | Calendar-month date clusters: wider than the 15d primary horizon, so overlapping forward windows and crash-clustered events mostly share a cluster. |
@@ -68,5 +70,19 @@
 | `SUSPICIOUS_SHARPE` | `2.0` | theory | backtest | Thesis: Sharpe above ~2-3 is treated as a probable bug until proven otherwise. |
 | `WF_FIT_YEARS` | `2` | theory | backtest | Thesis: fit on rolling ~2 years. |
 | `WF_TEST_MONTHS` | `6` | theory | backtest | Thesis: test on next 3-6 months. |
+| `FINRA_PUBLICATION_LAG_DAYS` | `12` | convention | data | FINRA publishes ~8 business days after settlement; 12 calendar days is a conservative availability date. |
 | `PANEL_WARMUP_DAYS` | `550` | convention | data | Calendar days loaded before dev_start: SECTOR_WINDOW + BETA_WINDOW = 342 trading days (~495 calendar days) of warm-up plus a holiday buffer. |
 | `REUSE_TOLERANCE_DAYS` | `7` | convention | data | A member cannot predate its first trade: a price history starting more than ~5 trading days after a membership spell begins marks the symbol as reused by another company, and that spell's prices are dropped. |
+| `CRASH_LOG_RET` | `-0.25` | theory | forecast | Stage 1/2 crash definition over 63 days; scaled by sqrt(h/63) for other horizons. |
+| `EWMA_LAMBDA` | `0.94` | theory | forecast | RiskMetrics decay for standardising returns. |
+| `FHS_BLOCK` | `5` | convention | forecast | Bootstrap block length (keeps vol clustering). |
+| `FHS_YEARS` | `3` | convention | forecast | Years of own history for the return shape. |
+| `SIM_PATHS` | `20000` | convention | forecast | Simulated paths per live forecast. |
+| `SCAN_IV_GUARD` | `1.5` | convention | scanner | Hide contracts when model vol / market iv30 is outside [1/1.5, 1.5]. |
+| `SCAN_MAX_DTE` | `180` | convention | scanner | Longest expiry scanned (calendar days). |
+| `SCAN_MAX_PER_SECTOR_SIDE` | `3` | convention | scanner | Diversification: same-direction picks per sector ETF. |
+| `SCAN_MAX_PER_TICKER` | `2` | convention | scanner | Diversification: picks per stock. |
+| `SCAN_MIN_DTE` | `7` | convention | scanner | Shortest expiry scanned (calendar days). |
+| `SCAN_POST_EARNINGS_DAYS` | `22` | theory | scanner | Skip a stock while its last earnings day is inside the RV22 input window. |
+| `SCAN_TOP_N` | `25` | convention | scanner | Picks shown per day. |
+| `SMILE_MAX_SPREAD` | `0.25` | convention | scanner | Quotes wider than 25% of mid are too noisy to shape the market density. |

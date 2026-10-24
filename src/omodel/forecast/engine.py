@@ -103,8 +103,12 @@ CRASH_LOG_RET = params.register("CRASH_LOG_RET", -0.25, "theory", "forecast",
 
 def price_distribution(spot: float, vol_ann: float, h: int, z_hist: np.ndarray, earnings_z: np.ndarray | None = None,
                        n: int | None = None, seed: int = 0, bins: int = 401,
-                       crash_ratio: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
-    """Discrete S_T distribution (grid, probs) for Layer 5: drift 0, HAR vol, FHS shape, short-interest tail tilt."""
+                       crash_ratio: float = 1.0, forward: float | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """Discrete S_T distribution (grid, probs) for Layer 5: HAR vol, FHS shape, short-interest tail tilt.
+
+    With `forward` given, the distribution's mean is set to it: no directional view (Stage 1), so the model
+    and the market agree on the average price and differ only in volatility and shape.
+    """
     n = SIM_PATHS if n is None else n
     rng = np.random.default_rng(seed)
     s = bank(z_hist, h, n, rng, earnings_z)
@@ -117,6 +121,8 @@ def price_distribution(spot: float, vol_ann: float, h: int, z_hist: np.ndarray, 
         w[tail] = new_tail / p_tail
         w[~tail] = (1 - new_tail) / (1 - p_tail)
     st = spot * np.exp(log_r)
+    if forward is not None:
+        st *= forward / (np.dot(w, st) / w.sum())
     edges = np.quantile(st, np.linspace(0, 1, bins + 1))
     edges = np.unique(edges)
     idx = np.clip(np.searchsorted(edges, st, side="right") - 1, 0, len(edges) - 2)

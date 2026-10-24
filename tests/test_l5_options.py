@@ -110,7 +110,7 @@ def test_scan_expiry_matches_reference_evaluator():
         if (st.name, legs) not in fast.index:
             legs = "/".join(reversed(legs.split("/")))
         row = fast.loc[(st.name, legs)]
-        assert row["ev"] == pytest.approx(ref["ev"], abs=0.5)
+        assert row["ev_model"] == pytest.approx(ref["ev"], abs=0.5)
         assert row["max_loss"] == pytest.approx(ref["max_loss"], abs=0.5)
     assert l5.scan_expiry(chain.iloc[:0], grid, probs).empty
 
