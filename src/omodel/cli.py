@@ -89,6 +89,14 @@ def _phase1(args: argparse.Namespace) -> int:
     return 0
 
 
+def _h2a(args: argparse.Namespace) -> int:
+    from omodel.experiments import h2a
+
+    res = h2a.run()
+    print(f"h2a verdict: {res['verdict']}  report: {h2a.config.settings().reports_dir / 'h2a' / 'report.md'}")
+    return 0
+
+
 def _params(args: argparse.Namespace) -> int:
     if args.print:
         phase1.import_all()
@@ -121,6 +129,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("snapshot-options", help="Store today's CBOE delayed option chains (run after ~16:30 ET).")
     p.add_argument("--tickers", nargs="+", help="Default: current S&P 500 members.")
     p.set_defaults(func=_snapshot_options)
+
+    p = sub.add_parser("h2a", help="Run the one-shot H2a holdout drift test (needs the holdout unlocked).")
+    p.set_defaults(func=_h2a)
 
     p = sub.add_parser("phase1", help="Run the pre-registered Phase 1 event study and write the report.")
     p.add_argument("--no-news", action="store_true", help="Skip the SEC 8-K confirming signal.")
