@@ -90,6 +90,13 @@ def bank(z: np.ndarray, h: int, n: int, rng: np.random.Generator, earnings_z: np
     return draws.sum(axis=1)
 
 
+def shape(s: np.ndarray, h: int) -> np.ndarray:
+    """Centre the bootstrapped sums (drift = 0: a trending history must not leak momentum) and scale to variance h."""
+    s = s[np.isfinite(s)]
+    s = s - s.mean()
+    return s / np.sqrt(np.mean(s ** 2) / h)
+
+
 CRASH_LOG_RET = params.register("CRASH_LOG_RET", -0.25, "theory", "forecast",
                                 "Stage 1/2 crash definition over 63 days; scaled by sqrt(h/63) for other horizons.")
 
@@ -101,10 +108,7 @@ def price_distribution(spot: float, vol_ann: float, h: int, z_hist: np.ndarray, 
     n = SIM_PATHS if n is None else n
     rng = np.random.default_rng(seed)
     s = bank(z_hist, h, n, rng, earnings_z)
-    s = s[np.isfinite(s)]
-    # Rescale so the bank's own variance matches h (the vol level comes from HAR, only the shape from history).
-    s = s / np.sqrt(np.mean(s ** 2) / h)
-    log_r = vol_ann / np.sqrt(252) * s
+    log_r = vol_ann / np.sqrt(252) * shape(s, h)
     w = np.ones(len(log_r))
     tail = log_r < CRASH_LOG_RET * np.sqrt(h / 63)
     p_tail = tail.mean()

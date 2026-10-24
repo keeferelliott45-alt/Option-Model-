@@ -113,7 +113,7 @@ def run() -> dict:
             ez = z.reindex(edays[(edays >= hist.index.min()) & (edays <= hist.index.max())]).to_numpy()
             b0 = eng.bank(hist.to_numpy(), H, BANK_N, rng)
             b1 = eng.bank(hist.to_numpy(), H, BANK_N, rng, earnings_z=ez) if np.isfinite(ez).any() else b0
-            b0, b1 = (b / np.sqrt(np.nanmean(b ** 2) / H) for b in (b0, b1))
+            b0, b1 = eng.shape(b0, H), eng.shape(b1, H)
             for i, row in gy.iterrows():
                 d = row["date"]
                 past = edays[edays <= d]

@@ -25,6 +25,10 @@ PER_TICKER = params.register("SCAN_MAX_PER_TICKER", 2, "convention", "scanner", 
 PER_SECTOR_SIDE = params.register("SCAN_MAX_PER_SECTOR_SIDE", 3, "convention", "scanner",
                                   "Diversification: same-direction picks per sector ETF.")
 TOP_N = params.register("SCAN_TOP_N", 25, "convention", "scanner", "Picks shown per day.")
+POST_EARN_DAYS = params.register("SCAN_POST_EARNINGS_DAYS", 22, "theory", "scanner",
+                                 "Skip a stock while its last earnings day is inside the RV22 input window.")
+IV_GUARD = params.register("SCAN_IV_GUARD", 1.5, "convention", "scanner",
+                           "Hide contracts when model vol / market iv30 is outside [1/1.5, 1.5].")
 BULLISH = {"long_call", "bull_call_debit", "bull_put_credit"}
 BEARISH = {"long_put", "bear_put_debit", "bear_call_credit"}
 
@@ -90,10 +94,13 @@ def run(refresh: bool = True) -> pd.DataFrame:
         spot = float(chain.attrs.get("underlying_price") or panel.raw_close.at[asof, t])
         z = eng.ewma_z(ret[t].to_numpy())[-252 * eng.FHS_YEARS:]
         nxt_earn = cal.get(t.upper())
-        if nxt_earn is None and t in facts_by:
-            subs = sec.load_submissions(cik[t.upper()]) if config.settings().sec_user_agent else None
-            if subs is not None and len(subs):
-                nxt_earn = l3.next_earnings_estimate(sec.earnings_days(subs, panel.dates), asof)
+        subs = sec.load_submissions(cik[t.upper()]) if t.upper() in cik and config.settings().sec_user_agent else None
+        past_earn = sec.earnings_days(subs, panel.dates) if subs is not None and len(subs) else pd.DatetimeIndex([])
+        if nxt_earn is None and len(past_earn):
+            nxt_earn = l3.next_earnings_estimate(past_earn, asof)
+        if len(past_earn) and past_earn.max() >= panel.dates[-POST_EARN_DAYS]:
+            continue  # recent earnings jump still inside the RV inputs (Stage 2 amendment 1: veto, not a model change)
+        iv30 = float(chain.attrs.get("iv30") or np.nan)
         dte = (pd.to_datetime(chain["expiry"]) - asof).dt.days
         for expiry in sorted(chain.loc[dte.between(MIN_DTE, MAX_DTE), "expiry"].unique()):
             expiry = pd.Timestamp(expiry)
@@ -101,6 +108,8 @@ def run(refresh: bool = True) -> pd.DataFrame:
                 continue  # Stage 2: the engine is not calibrated across earnings
             h = max(int(np.busday_count(asof.date(), expiry.date())), 1)
             vol = float(fit.har_vol(models, h, X.loc[[t]])[0])
+            if np.isfinite(iv30) and iv30 > 0 and not (1 / IV_GUARD <= vol / iv30 <= IV_GUARD):
+                continue  # strong disagreement with the market = missing information, not edge
             ratio = fit.crash_ratio(models, 0.5 * np.log(float(fit.har_vol(models, 21, X.loc[[t]])[0]) ** 2),
                                     np.log(max(spct.get(t, np.nan), 1e-5)) if t in spct else np.nan)
             grid, probs = eng.price_distribution(spot, vol, h, z, crash_ratio=ratio, seed=zlib.crc32(f"{t}{expiry.date()}".encode()))

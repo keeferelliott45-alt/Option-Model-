@@ -44,3 +44,17 @@ The live scanner never holds across earnings, so the forecast should describe no
 - **Live guard (convention, not tested):** a contract is not shown when the engine's volatility for its
   stock is more than 1.5x or less than 0.5x the market's 30-day implied vol; such disagreement is treated as
   missing information, not as edge.
+
+## Amendment 2 — 2026-10-24, before any HAR-N result
+
+Reason: HAR is fit on all stock-months, so its level includes the average earnings jump; the scanner only
+uses windows without earnings, where it therefore overstates volatility and makes options look cheap
+(first live scan: PLTR 7-day forecast 59% vs 46% implied for that expiry). Test C already showed the mirror
+image (too narrow in earnings windows).
+
+- **HAR-N:** HAR fit only on stock-months whose 21-day target window contains no earnings effective day.
+- **Test B2:** calibration (central 50% and 90% coverage, ±3 pp) on no-earnings windows only, development
+  period, for HAR-N; HAR's coverage on the same windows is reported for comparison. Pass → live engine uses
+  HAR-N for the (no-earnings) windows it scans; fail → no live picks are shown until a calibrated engine exists.
+- The live disagreement guard compares against the at-the-money implied vol of the same expiry instead of the
+  30-day index (convention).
