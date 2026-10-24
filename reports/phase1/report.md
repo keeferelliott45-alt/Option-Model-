@@ -4,8 +4,8 @@
 Failed: criterion 1, 1b, 2, 3, 4. Per the pre-registration: stop and report; later phases are not built on this premise.
 **The placebo criterion failed, so this run is INVALID until the cause (a pipeline bug, or a drift shared by every day such as survivor drift) is found.**
 
-Run 2026-10-23T14:56:21Z; data 1998-07-02 to 2025-10-22; 695 tickers, 6,491 development trading days; PREREGISTRATION.md sha256 `394b7d5371623754891e33327c5d2187067c430ae24d4608743a6d9de83e5658`.
-Code: git `10d6b3393e8f` (clean); code sha256 `409b652ece286bbf4ff6393091cd526baebc094ad45248dd4283f9292b71ac99`.
+Run 2026-10-24T13:38:11Z; data 1998-07-02 to 2025-10-22; 695 tickers, 6,491 development trading days; PREREGISTRATION.md sha256 `394b7d5371623754891e33327c5d2187067c430ae24d4608743a6d9de83e5658`.
+Code: git `4d34828f08b2` (clean); code sha256 `409b652ece286bbf4ff6393091cd526baebc094ad45248dd4283f9292b71ac99`.
 
 ## Decision: pre-registered criteria
 
@@ -191,12 +191,13 @@ Events split into expanding-window terciles (cut points from earlier dates only;
 | Signal | Thesis predicts | n | Top - bottom [95% CI] | p | BH p | Discovery | Low-conf. |
 |---|---|---|---|---|---|---|---|
 | vol_z | + (high-volume drops overreact more) | 15,830 | -0.14% [-0.53%, +0.25%] | 0.496 | 0.496 | no | no |
-| sec_ret | - (core bet: drops on days the sector fell hardest revert more) | 15,832 | +0.53% [+0.04%, +1.08%] | 0.052 | 0.130 | no | no |
-| mkt_ret | - (drops on market-wide selloff days revert more) | 15,832 | +0.37% [-0.14%, +0.97%] | 0.193 | 0.250 | no | no |
-| peer_z | - (drops shared with sector peers (low peer z) revert more) | 15,832 | -0.35% [-0.65%, -0.06%] | 0.020 | 0.100 | yes | no |
-| abs_z | + (larger unexplained drops revert more) | 15,832 | -0.21% [-0.52%, +0.12%] | 0.200 | 0.250 | no | no |
+| sec_ret | - (core bet: drops on days the sector fell hardest revert more) | 15,832 | +0.53% [+0.04%, +1.08%] | 0.052 | 0.156 | no | no |
+| mkt_ret | - (drops on market-wide selloff days revert more) | 15,832 | +0.37% [-0.14%, +0.97%] | 0.193 | 0.288 | no | no |
+| peer_z | - (drops shared with sector peers (low peer z) revert more) | 15,832 | -0.35% [-0.65%, -0.06%] | 0.020 | 0.120 | no | no |
+| abs_z | + (larger unexplained drops revert more) | 15,832 | -0.21% [-0.52%, +0.12%] | 0.200 | 0.288 | no | no |
+| no_8k | + (drops with no company 8-K (price/news mismatch) revert more) | 16,055 | +0.17% [-0.13%, +0.44%] | 0.240 | 0.288 | no | no |
 
-SEC 8-K news proxy: skipped: disabled (--no-news)
+SEC 8-K news proxy: ok; 100.0% of events covered, 44.5% of covered events had an 8-K effective on the event day or the 1 session(s) before; 0 of 596 tickers have no CIK in SEC's current map
 
 ### Stale-price windows (diagnostic)
 
@@ -276,7 +277,7 @@ Rule: volume[t+1] == 0 or as-traded open[t+1] == close[t]. Such an open is a fre
 - **Fake opens.** 4.0% of events had a t+1 open that was not a real trade and were dropped; using them as fills gives -0.40% instead of -0.39%. A large gap means early-year data quality, not the effect, drives part of the result.
 - **Untradeable bounce.** Entering at the event-day close instead of the next open changes the mean by +0.00% [-0.03%, +0.03%]; that part could not have been captured.
 - **Selection.** Out-of-sample (walk-forward) mean -0.42% [-0.69%, -0.18%] versus the full-window -0.39% [-0.63%, -0.20%]. An out-of-sample mean well below the full-window one would mean the threshold choice, not the effect, drives the in-sample number.
-- **Chance.** This report computes about 41 summary statistics; with no effect anywhere roughly 2.1 would exclude zero at 95% by luck. Only the pre-registered criteria decide, and the factor battery is BH-corrected.
+- **Chance.** This report computes about 42 summary statistics; with no effect anywhere roughly 2.1 would exclude zero at 95% by luck. Only the pre-registered criteria decide, and the factor battery is BH-corrected.
 - **Pipeline.** Random member days give -0.15% [-0.27%, -0.04%] before costs. A non-zero placebo would mean lookahead or a shared drift that inflates the event mean too.
 - **For a FAIL to be a fluke** (a real effect missed): a positive true mean would have to lie above the whole 95% CI [-0.63%, -0.20%]. Chance alone puts it there about 2.5% of the time, unless the CI is too narrow (few independent months, or dependence the month clusters miss).
 
