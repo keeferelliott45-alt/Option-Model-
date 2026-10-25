@@ -71,3 +71,17 @@ market's delta, 6.8%, but whose expected payoff was ~4x the price because of the
   quantities. Pass: realized/model ratio within [0.8, 1.25] for both tails.
 - **Consequence:** if E fails, contracts in the 0.05–0.20 delta bucket (tail-priced) are not shown, and the
   report says so; other buckets are unaffected.
+
+## Amendment 4 — 2026-10-25, before any result on the expanded universe
+
+Reason: the scanner is being widened from S&P 500 members to the full US market (stocks with market cap
+≥ $2B, price ≥ $10, volume ≥ 500k) plus 45 liquid unleveraged ETFs. The engine was validated only on
+S&P 500 members.
+
+- **Test B3 / E3:** the HAR-N engine is fit walk-forward on S&P 500 member rows exactly as in B2, then applied to
+  two new groups: (1) non-S&P stocks of the live universe, (2) the ETFs. For each group, on no-earnings
+  windows (all windows for ETFs), development period: central 50% / 90% coverage within ±3 pp (B3) and
+  tail payoff ratios within [0.8, 1.25] (E3).
+- A group that fails either test is excluded from live scanning; the report says so.
+- Caveat stated in advance: the new names are today's survivors, so their history under-represents
+  collapses; this mostly affects the downside tail.
