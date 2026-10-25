@@ -1,8 +1,8 @@
 {
   "asof": "2026-10-23",
   "regime": "calm, normal correlation (0.09), tension normal (-0.18)",
-  "contracts_scored": 5556,
-  "tickers_scored": 24,
-  "picks": 8,
+  "contracts_scored": 24947,
+  "tickers_scored": 55,
+  "picks": 17,
   "status": "UNVALIDATED - paper only until the Stage 3 forward test"
 }

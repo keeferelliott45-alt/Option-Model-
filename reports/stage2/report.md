@@ -37,3 +37,11 @@ HAR-N coverage 50%/90%: dev 51.0% / 90.6% (n=48569), holdout 43.6% / 86.1% (n=30
 ## Amendment 3 — test E (tail payoff calibration)
 
 Realized/model expected excess beyond the 95th percentile 0.93, below the 5th 1.22 (n=48569): **PASS**.
+
+## Amendment 4 — expanded universe (B3 / E3)
+
+| Group | n | 50% | 90% | Upper tail | Lower tail | Pass |
+|---|---|---|---|---|---|---|
+| sp | 48569 | 51.0% | 90.5% | 0.93 | 1.22 | **PASS** |
+| new | 81487 | 47.3% | 87.2% | 1.70 | 1.90 | fail |
+| etf | 7998 | 50.8% | 90.5% | 1.15 | 1.25 | **PASS** |

@@ -1,6 +1,6 @@
 # Parameter registry
 
-82 parameters, 0 fit to data. Data-fit parameters are only ever chosen inside walk-forward fit windows and get the most out-of-sample scrutiny.
+85 parameters, 0 fit to data. Data-fit parameters are only ever chosen inside walk-forward fit windows and get the most out-of-sample scrutiny.
 
 | Parameter | Value | Source | Layer | Rationale |
 |---|---|---|---|---|
@@ -86,3 +86,6 @@
 | `SCAN_POST_EARNINGS_DAYS` | `22` | theory | scanner | Skip a stock while its last earnings day is inside the RV22 input window. |
 | `SCAN_TOP_N` | `25` | convention | scanner | Picks shown per day. |
 | `SMILE_MAX_SPREAD` | `0.25` | convention | scanner | Quotes wider than 25% of mid are too noisy to shape the market density. |
+| `UNIVERSE_MIN_MCAP` | `2000000000.0` | convention | universe | Full-market scan: $2B+ companies have reliably listed, liquid options. |
+| `UNIVERSE_MIN_PRICE` | `10.0` | convention | universe | Above $10 strike spacing is fine enough for verticals. |
+| `UNIVERSE_MIN_VOLUME` | `500000` | convention | universe | Daily share volume floor: thin stocks have thin options. |
