@@ -45,3 +45,7 @@ Realized/model expected excess beyond the 95th percentile 0.93, below the 5th 1.
 | sp | 48569 | 51.0% | 90.5% | 0.93 | 1.22 | **PASS** |
 | new | 81487 | 47.3% | 87.2% | 1.70 | 1.90 | fail |
 | etf | 7998 | 50.8% | 90.5% | 1.15 | 1.25 | **PASS** |
+
+## Amendment 5 — non-S&P fix (B5 / E5)
+
+Years 2013-2025, n=70235: coverage 54.4% / 91.7%, tail ratios 1.38 up / 1.19 down: fail.
