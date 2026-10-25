@@ -85,3 +85,16 @@ S&P 500 members.
 - A group that fails either test is excluded from live scanning; the report says so.
 - Caveat stated in advance: the new names are today's survivors, so their history under-represents
   collapses; this mostly affects the downside tail.
+
+## Amendment 5 — 2026-10-25, before any result for the fix
+
+Reason: amendment 4 found non-S&P stocks under-covered (47.3% / 87.2%) with tails too thin (1.70x up, 1.90x down).
+
+- **HAR-G:** the HAR-N model fit walk-forward on non-S&P rows only (same features, same yearly refit).
+- **Tail stretch (data-fit, walk-forward):** for year Y, k_up and k_dn = realized/model tail-excess ratios
+  measured on non-S&P rows of all years before Y (needs ≥ 3 prior years; earlier years are not scored).
+  The bootstrapped shape is stretched beyond its own 5th/95th percentiles: x' = q95 + k_up·(x − q95) above
+  q95, x' = q5 − k_dn·(q5 − x) below q5. The 5–95% body is unchanged.
+- **Test B5 / E5:** non-S&P group, development period, scored years only: coverage 50% / 90% within ±3 pp and
+  stretched tail ratios within [0.8, 1.25]. Pass → the group joins the scan with HAR-G and the stretch
+  factors re-estimated on all history; fail → it stays excluded.
