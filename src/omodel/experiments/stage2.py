@@ -313,6 +313,87 @@ def run_e() -> dict:
     return res
 
 
+def run_groups() -> dict:
+    """Amendment 4: B3 coverage and E3 tail ratios for non-S&P stocks and ETFs, engine fit on S&P rows only."""
+    from omodel.data import market_universe as mu
+
+    config.override(holdout_start=stage1.END + pd.Timedelta(days=1))
+    membership = universe.load_membership()
+    uni = mu.live_universe()
+    sp_ever = set(membership["ticker"])
+    tickers = sorted(set(uni["ticker"]) | sp_ever)
+    panel = panel_mod.build_panel(end=stage1.END, tickers=tickers, membership=membership)
+    ret = np.log(panel.close).diff()
+    mac = macro.load_macro_panel()
+    me = pf.month_ends(panel.dates)
+    me = me[me >= START]
+    raw = panel.raw_close.reindex(me)
+    member = panel.member.reindex(me).eq(True)
+    group = pd.DataFrame("", index=me, columns=panel.close.columns)
+    etfs = set(uni.loc[uni["kind"] == "etf", "ticker"])
+    new_stocks = set(uni.loc[uni["kind"] == "stock", "ticker"]) - sp_ever
+    for t in group.columns:
+        group[t] = np.where(member[t], "sp", "etf" if t in etfs else "new" if t in new_stocks else "")
+    keep = ((group != "") & (raw >= 5)).stack(future_stack=True).to_numpy()
+    em = earnings_mask(ret, panel.dates)
+    ahead = em.astype(float).shift(-H).rolling(H, min_periods=1).max()
+    lc = np.log(panel.close)
+    frames = {**eng.har_features(ret, mac["vix"], mac["vix3m"]), "y": eng.har_target(ret, H), "r21": lc.shift(-H) - lc,
+              "ahead": ahead, "group": group}
+    df = _stack(frames, me)[keep].reset_index(drop=True)
+    df = df[df["ahead"] == 0].reset_index(drop=True)
+    # Fit on S&P rows only (as validated), predict everyone: walk-forward by year.
+    df["f"] = np.nan
+    for year in range(START.year, df["date"].dt.year.max() + 1):
+        cut = pd.Timestamp(f"{year}-01-01")
+        train = df[(df["group"] == "sp") & (df["date"] < cut - pd.Timedelta(days=35))]
+        test = (df["date"].dt.year == year) & df[list(eng.HAR_FEATURES)].notna().all(axis=1)
+        if len(train) < 1000 or not test.any():
+            continue
+        m = eng.HAR().fit(train[list(eng.HAR_FEATURES)], train["y"])
+        df.loc[test, "f"] = m.predict_var(df.loc[test, list(eng.HAR_FEATURES)])
+    df = df[(df["date"] <= stage1.DEV_END) & df["f"].notna() & df["r21"].notna()]
+    rng = np.random.default_rng(20261025)
+    stats_by = {g: {"pit": [], "m_up": 0.0, "r_up": 0.0, "m_dn": 0.0, "r_dn": 0.0} for g in ("sp", "new", "etf")}
+    for t, g in df.groupby("ticker"):
+        z = pd.Series(eng.ewma_z(ret[t].to_numpy()), index=ret.index)
+        for year, gy in g.groupby(g["date"].dt.year):
+            hist = z[(z.index >= pd.Timestamp(f"{year - eng.FHS_YEARS}-01-01")) & (z.index < pd.Timestamp(f"{year}-01-01"))]
+            if hist.notna().sum() < 250:
+                continue
+            b = eng.shape(eng.bank(hist.to_numpy(), H, BANK_N, rng), H)
+            q5, q95 = np.quantile(b, [0.05, 0.95])
+            for grp, gg in gy.groupby("group"):
+                s = stats_by[grp]
+                sc = np.sqrt(gg["f"].to_numpy() / 252)
+                x = gg["r21"].to_numpy()
+                s["pit"].extend((b[None, :] <= (x / sc)[:, None]).mean(axis=1))
+                s["m_up"] += float((np.maximum(b - q95, 0).mean() * sc).sum())
+                s["m_dn"] += float((np.maximum(q5 - b, 0).mean() * sc).sum())
+                s["r_up"] += float(np.maximum(x - q95 * sc, 0).sum())
+                s["r_dn"] += float(np.maximum(q5 * sc - x, 0).sum())
+    res = {}
+    for grp, s in stats_by.items():
+        p = np.asarray(s["pit"])
+        if not len(p):
+            continue
+        r = {"n": int(len(p)), "cov50": float(((p > 0.25) & (p < 0.75)).mean()),
+             "cov90": float(((p > 0.05) & (p < 0.95)).mean()),
+             "upper_ratio": s["r_up"] / s["m_up"], "lower_ratio": s["r_dn"] / s["m_dn"]}
+        r["passed"] = bool(abs(r["cov50"] - 0.5) <= 0.03 and abs(r["cov90"] - 0.9) <= 0.03
+                           and 0.8 <= r["upper_ratio"] <= 1.25 and 0.8 <= r["lower_ratio"] <= 1.25)
+        res[grp] = r
+    out = config.settings().reports_dir / "stage2"
+    (out / "groups_results.json").write_text(json.dumps(res, indent=2), encoding="utf-8")
+    with (out / "report.md").open("a", encoding="utf-8") as fh:
+        fh.write("\n## Amendment 4 — expanded universe (B3 / E3)\n\n| Group | n | 50% | 90% | Upper tail | Lower tail | Pass |\n"
+                 "|---|---|---|---|---|---|---|\n")
+        for grp, r in res.items():
+            fh.write(f"| {grp} | {r['n']} | {100 * r['cov50']:.1f}% | {100 * r['cov90']:.1f}% | {r['upper_ratio']:.2f} | "
+                     f"{r['lower_ratio']:.2f} | {'**PASS**' if r['passed'] else 'fail'} |\n")
+    return res
+
+
 def _crash_test(panel, df: pd.DataFrame, me: pd.DatetimeIndex, membership) -> dict:
     tickers = list(panel.close.columns)
     fund = fu.fundamental_panel(tickers, me)

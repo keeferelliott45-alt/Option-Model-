@@ -32,7 +32,7 @@ EXTRA_COLUMNS = ["bid_size", "ask_size", "rho", "standard"]
 _NUMERIC = ["bid", "ask", "iv", "open_interest", "volume", "delta", "gamma", "vega", "theta", "theo",
             "last_trade_price", "bid_size", "ask_size", "rho"]
 _NOT_FOUND = {403, 404}  # the CDN answers 403, not 404, for symbols it has no chain for
-_MIN_INTERVAL = 0.2  # per-host politeness throttle; operational only, never affects results
+_MIN_INTERVAL = 0.5  # per-host politeness throttle; operational only, never affects results
 _OCC = re.compile(r"^(?P<root>.+)(?P<ymd>\d{6})(?P<cp>[CP])(?P<strike>\d{8})$")
 # Exchange-schedule facts, not tunables: equity options and their underlyings stop printing at 16:00 ET,
 # broad ETF/index options at 16:15, and the feed lags 15 minutes.

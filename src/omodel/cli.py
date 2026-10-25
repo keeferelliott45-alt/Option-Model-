@@ -59,8 +59,14 @@ def _fetch_sec(args: argparse.Namespace) -> int:
 
 
 def _current_members() -> list[str]:
+    """Full-market scan universe (validated groups only); falls back to S&P 500 members if the screener fails."""
     m = universe.load_membership(refresh=True)
-    return sorted(m.loc[m["end_date"].isna(), "ticker"].unique())
+    try:
+        from omodel.experiments.scanner import scan_universe
+
+        return sorted(scan_universe(m)["ticker"])
+    except Exception:
+        return sorted(m.loc[m["end_date"].isna(), "ticker"].unique())
 
 
 def _snapshot_options(args: argparse.Namespace) -> int:

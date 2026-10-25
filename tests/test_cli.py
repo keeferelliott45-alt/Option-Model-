@@ -40,6 +40,12 @@ def test_snapshot_defaults_to_current_members(monkeypatch):
     members = pd.DataFrame({"ticker": ["AAA", "BBB", "OLD"],
                             "end_date": [pd.NaT, pd.NaT, pd.Timestamp("2010-01-01")]})
     monkeypatch.setattr(cli.universe, "load_membership", lambda refresh=False: members)
+    from omodel.experiments import scanner
+
+    def offline(*a, **k):
+        raise ConnectionError("screener offline")
+
+    monkeypatch.setattr(scanner, "scan_universe", offline)  # falls back to S&P members
     seen = {}
     monkeypatch.setattr(cli.cboe_options, "snapshot", lambda t: seen.setdefault("t", t) and [])
     assert cli.main(["snapshot-options"]) == 0

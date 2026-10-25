@@ -44,7 +44,7 @@ def _latest_short_pct(tickers: list[str], shares: dict[str, float], asof: pd.Tim
     si = si[si["available"] <= asof]
     last = si.sort_values("settlement").groupby("ticker").last()
     return {t: float(last.at[t, "short_qty"] / shares[t]) for t in last.index
-            if t in shares and shares[t] and (asof - last.at[t, "settlement"]).days <= 45}
+            if t in shares and np.isfinite(shares[t]) and shares[t] > 0 and (asof - last.at[t, "settlement"]).days <= 45}
 
 
 def run(refresh: bool = True) -> pd.DataFrame:
@@ -54,7 +54,9 @@ def run(refresh: bool = True) -> pd.DataFrame:
         _log("refitting forecast models (monthly)")
         models = fit.fit_all()
     membership = universe.load_membership(refresh=refresh)
-    members = sorted(membership.loc[membership["end_date"].isna(), "ticker"].unique())
+    uni = scan_universe(membership, refresh)
+    members = list(uni["ticker"])
+    _log(f"universe: {len(members)} names ({uni['group'].value_counts().to_dict()})")
     if refresh:
         for t in [MARKET_ETF, *SECTOR_ETFS, *members]:
             try:
@@ -75,14 +77,8 @@ def run(refresh: bool = True) -> pd.DataFrame:
 
     cal = earnings_calendar.upcoming(asof, days=130, refresh_after=asof + pd.Timedelta(days=45))
     cik = sec.ticker_to_cik()
-    shares, facts_by = {}, {}
-    for t in members:
-        c = cik.get(t.upper())
-        f = store.read_json("sec_facts", str(c)) if c else None
-        if f:
-            facts_by[t] = l3.facts_long(f)
-            s = fu.company_series(f)["shares"]
-            shares[t] = float(s["val"].iloc[-1]) if len(s) else np.nan
+    shares = dict(zip(uni["ticker"], uni["shares"]))  # screener market cap / price; NaN for ETFs
+    facts_by = _LazyFacts(cik)
     spct = _latest_short_pct(members, shares, asof)
     sector = _sectors(panel, ret)
 
@@ -132,6 +128,39 @@ def run(refresh: bool = True) -> pd.DataFrame:
     picks = _select(allc, facts_by, asof)
     _write(picks, allc, asof, regime)
     return picks
+
+
+class _LazyFacts(dict):
+    """SEC fundamentals parsed only for tickers that reach the veto step (parsing all ~1,600 is slow)."""
+
+    def __init__(self, cik: dict[str, int]):
+        super().__init__()
+        self._cik = cik
+
+    def get(self, t, default=None):
+        if t not in self:
+            c = self._cik.get(str(t).upper())
+            f = store.read_json("sec_facts", str(c)) if c else None
+            if f is None and c and config.settings().sec_user_agent:
+                try:
+                    f = sec.load_companyfacts(c)
+                except Exception:
+                    f = None
+            self[t] = l3.facts_long(f) if f else None
+        return dict.get(self, t, default)
+
+
+def scan_universe(membership: pd.DataFrame, refresh: bool = False) -> pd.DataFrame:
+    """Live names with their validation group; groups that failed Stage 2 amendment 4 are dropped."""
+    from omodel.data import market_universe as mu
+
+    uni = mu.live_universe(refresh)
+    current = set(membership.loc[membership["end_date"].isna(), "ticker"])
+    uni["group"] = np.where(uni["kind"] == "etf", "etf", np.where(uni["ticker"].isin(current), "sp", "new"))
+    path = config.settings().reports_dir / "stage2" / "groups_results.json"
+    verdicts = json.loads(path.read_text()) if path.exists() else {}
+    allowed = {"sp"} | {g for g, r in verdicts.items() if r.get("passed")}
+    return uni[uni["group"].isin(allowed)].reset_index(drop=True)
 
 
 def _market_density(chain: pd.DataFrame, expiry: pd.Timestamp, spot: float, asof: pd.Timestamp):
