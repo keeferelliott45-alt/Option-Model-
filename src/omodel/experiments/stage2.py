@@ -394,6 +394,88 @@ def run_groups() -> dict:
     return res
 
 
+def stretch(b: np.ndarray, k_dn: float, k_up: float) -> np.ndarray:
+    """Amendment 5 tail stretch beyond the bank's own 5th/95th percentiles; the body is unchanged."""
+    q5, q95 = np.quantile(b, [0.05, 0.95])
+    out = b.copy()
+    hi, lo = b > q95, b < q5
+    out[hi] = q95 + k_up * (b[hi] - q95)
+    out[lo] = q5 - k_dn * (q5 - b[lo])
+    return out
+
+
+def run_new_fix() -> dict:
+    """Amendment 5: HAR-G + walk-forward tail stretch on non-S&P stocks (B5 / E5)."""
+    from omodel.data import market_universe as mu
+
+    config.override(holdout_start=stage1.END + pd.Timedelta(days=1))
+    membership = universe.load_membership()
+    uni = mu.live_universe()
+    new = sorted(set(uni.loc[uni["kind"] == "stock", "ticker"]) - set(membership["ticker"]))
+    panel = panel_mod.build_panel(end=stage1.END, tickers=new, membership=membership)
+    ret = np.log(panel.close).diff()
+    mac = macro.load_macro_panel()
+    me = pf.month_ends(panel.dates)
+    me = me[me >= START]
+    keep = (panel.raw_close.reindex(me) >= 5).stack(future_stack=True).to_numpy()
+    em = earnings_mask(ret, panel.dates)
+    ahead = em.astype(float).shift(-H).rolling(H, min_periods=1).max()
+    lc = np.log(panel.close)
+    frames = {**eng.har_features(ret, mac["vix"], mac["vix3m"]), "y": eng.har_target(ret, H),
+              "r21": lc.shift(-H) - lc, "ahead": ahead}
+    df = _stack(frames, me)[keep].reset_index(drop=True)
+    df = df[df["ahead"] == 0].reset_index(drop=True)
+    df["f"] = _walk_forward_har(df)  # HAR-G: fit on these (non-S&P) rows only
+    df = df[(df["date"] <= stage1.DEV_END) & df["f"].notna() & df["r21"].notna()].reset_index(drop=True)
+
+    rng = np.random.default_rng(20261025)
+    banks, yearly = {}, {}
+    for t, g in df.groupby("ticker"):
+        z = pd.Series(eng.ewma_z(ret[t].to_numpy()), index=ret.index)
+        for year, gy in g.groupby(g["date"].dt.year):
+            hist = z[(z.index >= pd.Timestamp(f"{year - eng.FHS_YEARS}-01-01")) & (z.index < pd.Timestamp(f"{year}-01-01"))]
+            if hist.notna().sum() < 250:
+                continue
+            b = eng.shape(eng.bank(hist.to_numpy(), H, BANK_N, rng), H)
+            banks[(t, year)] = (b, gy.index)
+            q5, q95 = np.quantile(b, [0.05, 0.95])
+            sc = np.sqrt(gy["f"].to_numpy() / 252)
+            x = gy["r21"].to_numpy()
+            a = yearly.setdefault(year, np.zeros(4))
+            a += [float((np.maximum(b - q95, 0).mean() * sc).sum()), float(np.maximum(x - q95 * sc, 0).sum()),
+                  float((np.maximum(q5 - b, 0).mean() * sc).sum()), float(np.maximum(q5 * sc - x, 0).sum())]
+    years = sorted(yearly)
+    k = {}
+    for y in years:
+        prior = [yearly[p] for p in years if p < y]
+        if len(prior) >= 3:
+            s = np.sum(prior, axis=0)
+            k[y] = (s[3] / s[2], s[1] / s[0])  # (k_dn, k_up)
+    pit = pd.Series(np.nan, index=df.index)
+    for (t, year), (b, idx) in banks.items():
+        if year not in k:
+            continue
+        bs = np.sort(stretch(b, *k[year]))
+        x = (df.loc[idx, "r21"] / np.sqrt(df.loc[idx, "f"] / 252)).to_numpy()
+        pit[idx] = np.searchsorted(bs, x, side="right") / len(bs)
+    scored = [y for y in years if y in k]
+    tot = np.sum([[yearly[y][0] * k[y][1], yearly[y][1], yearly[y][2] * k[y][0], yearly[y][3]] for y in scored], axis=0)
+    p = pit.dropna()
+    res = {"n": int(len(p)), "years_scored": f"{scored[0]}-{scored[-1]}" if scored else "",
+           "cov50": float(((p > 0.25) & (p < 0.75)).mean()), "cov90": float(((p > 0.05) & (p < 0.95)).mean()),
+           "upper_ratio": float(tot[1] / tot[0]), "lower_ratio": float(tot[3] / tot[2]),
+           "k_last": {"k_dn": k[scored[-1]][0], "k_up": k[scored[-1]][1]} if scored else {}}
+    res["passed"] = bool(abs(res["cov50"] - 0.5) <= 0.03 and abs(res["cov90"] - 0.9) <= 0.03
+                         and 0.8 <= res["upper_ratio"] <= 1.25 and 0.8 <= res["lower_ratio"] <= 1.25)
+    out = config.settings().reports_dir / "stage2"
+    (out / "new_fix_results.json").write_text(json.dumps(res, indent=2), encoding="utf-8")
+    with (out / "report.md").open("a", encoding="utf-8") as fh:
+        fh.write(f"\n## Amendment 5 — non-S&P fix (B5 / E5)\n\nYears {res['years_scored']}, n={res['n']}: coverage "
+                 f"{100 * res['cov50']:.1f}% / {100 * res['cov90']:.1f}%, tail ratios {res['upper_ratio']:.2f} up / "
+                 f"{res['lower_ratio']:.2f} down: {'**PASS**' if res['passed'] else 'fail'}.\n")
+    return res
+
+
 def _crash_test(panel, df: pd.DataFrame, me: pd.DatetimeIndex, membership) -> dict:
     tickers = list(panel.close.columns)
     fund = fu.fundamental_panel(tickers, me)
