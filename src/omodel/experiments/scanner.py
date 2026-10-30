@@ -64,6 +64,12 @@ def run(refresh: bool = True) -> pd.DataFrame:
             except Exception as exc:
                 _log(f"{t}: price refresh failed ({exc})")
     today = pd.Timestamp.today().normalize()
+    # Score the session of the latest saved chains, never today's partial bar (a run after the open would
+    # otherwise look for chains that cannot exist yet).
+    snap_root = config.settings().data_dir / "options_snapshots"
+    snap_days = sorted(pd.Timestamp(p.name) for p in snap_root.iterdir() if p.is_dir()) if snap_root.exists() else []
+    if snap_days:
+        today = min(today, snap_days[-1])
     panel = panel_mod.build_panel(start=today - pd.Timedelta(days=1400), end=today, tickers=members,
                                   membership=membership)
     asof = panel.dates[-1]
